@@ -1,0 +1,189 @@
+# Travel Booking API
+
+A Node.js backend API for travel booking automation with RateHawk integration using Browserless.
+
+## Features
+
+- **RateHawk Login Automation**: Automated login using Browserless cloud browsers
+- **User Authentication**: JWT-based authentication system
+- **Session Management**: User session storage and tracking
+- **Webhook Integration**: Make.com webhook support for automation workflows
+- **SQLite Database**: Local database for user management
+
+## Tech Stack
+
+- **Backend**: Node.js, Express.js
+- **Database**: SQLite with better-sqlite3
+- **Authentication**: JWT, bcryptjs
+- **Browser Automation**: Browserless (cloud browser service)
+- **Webhook Integration**: Make.com
+- **Environment**: GitHub Codespaces
+
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login
+
+### RateHawk Integration
+- `POST /api/ratehawk/login` - Automate RateHawk login via Browserless
+- `GET /api/ratehawk/session/:userId` - Check user session status
+
+### Health Check
+- `GET /api/health` - Server health status
+
+## Setup Instructions
+
+### Prerequisites
+- Node.js 18+
+- Browserless account and API token
+- Make.com account (for webhooks)
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/travel-booking-api.git
+cd travel-booking-api
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Create environment file:
+```bash
+cp .env.example .env
+```
+
+4. Configure environment variables in `.env`:
+```env
+PORT=3001
+JWT_SECRET=your-jwt-secret-key
+BROWSERLESS_API_TOKEN=your-browserless-token
+BROWSERLESS_ENDPOINT=wss://chrome.browserless.io?token=your-token
+DATABASE_PATH=./database.db
+```
+
+5. Start the server:
+```bash
+npm start
+# or for development
+npm run dev
+```
+
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `PORT` | Server port (default: 3001) | No |
+| `JWT_SECRET` | Secret key for JWT tokens | Yes |
+| `BROWSERLESS_API_TOKEN` | Browserless service API token | Yes |
+| `BROWSERLESS_ENDPOINT` | Browserless WebSocket endpoint | Yes |
+| `DATABASE_PATH` | SQLite database file path | No |
+
+## Usage
+
+### RateHawk Login Automation
+
+Send a POST request to `/api/ratehawk/login`:
+
+```json
+{
+  "userId": "user123",
+  "email": "user@example.com",
+  "password": "userpassword"
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "message": "User successfully logged into RateHawk",
+  "sessionId": "session_user123_1234567890",
+  "loginUrl": "https://www.ratehawk.com/dashboard",
+  "timestamp": "2025-05-29T06:00:00.000Z"
+}
+```
+
+### Webhook Integration
+
+The API works with Make.com webhooks for automated workflows:
+
+1. User logs in on your frontend
+2. Make.com webhook triggers
+3. API automates RateHawk login
+4. Session stored for future use
+
+## Development
+
+### Running in Development Mode
+
+```bash
+npm run dev
+```
+
+### Testing the API
+
+```bash
+# Health check
+curl http://localhost:3001/api/health
+
+# Test RateHawk login
+curl -X POST http://localhost:3001/api/ratehawk/login \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"test","email":"your-email","password":"your-password"}'
+```
+
+## Deployment
+
+### GitHub Codespaces
+The project is configured to run in GitHub Codespaces with automatic port forwarding.
+
+### Production Deployment
+- Deploy to platforms like Railway, Render, or Heroku
+- Update environment variables for production
+- Configure public URLs for webhook endpoints
+
+## Architecture
+
+```
+Frontend (Port 8080) → Make.com Webhook → Backend API (Port 3001) → Browserless → RateHawk
+```
+
+## Security
+
+- JWT authentication for user sessions
+- Environment variables for sensitive data
+- Secure password hashing with bcryptjs
+- Cloud browser isolation via Browserless
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Support
+
+For issues and questions:
+- Create an issue on GitHub
+- Check the [Browserless documentation](https://docs.browserless.io/)
+- Review [Make.com webhook docs](https://www.make.com/en/help/tools/webhooks)
+
+## Changelog
+
+### v1.0.0
+- Initial release
+- RateHawk login automation
+- User authentication system
+- Make.com webhook integration
+- SQLite database setup
