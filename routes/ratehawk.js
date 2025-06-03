@@ -187,9 +187,10 @@ router.post('/login', async (req, res) => {
 });
 
 // Hotel search endpoint
+// Hotel search endpoint
 router.post('/search', async (req, res) => {
   const startTime = Date.now();
-  const { userId, destination, checkin, checkout, guests, residency = 'en-us', currency = 'USD' } = req.body;
+  const { userId, destination, checkin, checkout, guests, residency = 'en-us', currency = 'USD', page = 1, filters = {} } = req.body;
   
   console.log('🔍 === HOTEL SEARCH REQUEST ===');
   console.log('📥 Raw request body:', JSON.stringify(req.body, null, 2));
@@ -198,6 +199,7 @@ router.post('/search', async (req, res) => {
   console.log(`📅 Check-in: ${checkin}, Check-out: ${checkout}`);
   console.log(`👥 Guests: ${JSON.stringify(guests)}`);
   console.log(`🌍 Residency: ${residency}, Currency: ${currency}`);
+  console.log(`📄 Page: ${page}`); // NEW: Log page number
   
   // Validation
   if (!userId || !destination || !checkin || !checkout || !guests) {
@@ -245,7 +247,7 @@ router.post('/search', async (req, res) => {
     console.log(`✅ Using valid session for user: ${userId}`);
     console.log(`🍪 Session has ${userSession.cookies?.length || 0} cookies`);
 
-    // Perform hotel search
+    // Perform hotel search with page parameter and filters
     const searchResult = await searchHotels({
       userSession,
       destination,
@@ -253,7 +255,9 @@ router.post('/search', async (req, res) => {
       checkout,
       guests,
       residency,
-      currency
+      currency,
+      page: parseInt(page) || 1,
+      filters: filters || {} // NEW: Pass filters
     });
 
     const duration = Date.now() - startTime;

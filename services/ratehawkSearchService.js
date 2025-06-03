@@ -4,6 +4,66 @@
 // ================================
 
 /**
+ * Convert our filter format to RateHawk URL parameters
+ */
+function buildRateHawkFilters(filters) {
+  const params = {};
+  
+  if (!filters) return params;
+  
+  // Star ratings: Convert ["3", "4", "5"] to "3.4.5"
+  if (filters.starRating && filters.starRating.length > 0) {
+    params.stars = filters.starRating.join('.');
+  }
+  
+  // Price range: Convert [100, 500] to "100-500"
+  if (filters.priceRange && filters.priceRange.length === 2) {
+    const [min, max] = filters.priceRange;
+    if (min > 1 || max < 1255) {
+      params.price = `${min}-${max}`;
+    }
+  }
+  
+  // Meals: Convert ["breakfast", "halfBoard"] to "breakfast.halfBoard"
+  if (filters.meals && filters.meals.length > 0) {
+    params.meal_types = filters.meals.join('.');
+  }
+  
+  // Payment options: Convert ["freecancellation", "site"] to "freecancellation.site"
+  if (filters.payment && filters.payment.length > 0) {
+    params.payment = filters.payment.join('.');
+  }
+  
+  // Reviews rating: Convert ["8", "9"] to "8.9"
+  if (filters.reviewsRating && filters.reviewsRating.length > 0) {
+    params.reviews_rating = filters.reviewsRating.join('.');
+  }
+  
+  // Amenities: Combine all facility types
+  const allAmenities = [
+    ...(filters.hotelFacilities || []),
+    ...(filters.roomFacilities || []),
+    ...(filters.accommodationFeatures || [])
+  ];
+  if (allAmenities.length > 0) {
+    params.amenities = allAmenities.join('.');
+  }
+  
+  // Green certification
+  if (filters.green && filters.green.length > 0) {
+    params.certificates = filters.green.join('.');
+  }
+  
+  // Property types: Convert ["hotel", "apart"] to "hotel.apart"
+  if (filters.propertyTypes && filters.propertyTypes.length > 0) {
+    params.type_group = filters.propertyTypes.join('.');
+  }
+  
+  console.log('🎯 Built RateHawk filter params:', params);
+  return params;
+}
+
+/**
  * Generate UUID v4 for search requests
  */
 function generateUUID() {
@@ -58,6 +118,7 @@ function extractSinglePageId(cookies) {
   console.log('📄 Single Page ID:', pageId ? `Found (${pageId.substring(0, 30)}...)` : 'Using default');
   return pageId;
 }
+
 
 /**
  * Extract partner slug from cookies
@@ -371,7 +432,7 @@ function transformHotelData(hotels) {
 /**
  * Main hotel search function with correct two-step RateHawk API flow
  */
-async function searchHotels({ userSession, destination, checkin, checkout, guests, residency = 'en-us', currency = 'USD' }) {
+async function searchHotels({ userSession, destination, checkin, checkout, guests, residency = 'en-us', currency = 'USD', page = 1, filters = {} }) {
   console.log('🔍 === STARTING RATEHAWK HOTEL SEARCH ===');
   console.log('📋 Search parameters:', JSON.stringify({
     destination,
@@ -379,7 +440,8 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
     checkout,
     guests,
     residency,
-    currency
+    currency,
+    page // NEW: Log the page parameter
   }, null, 2));
   
   const startTime = Date.now();
@@ -400,6 +462,7 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
     console.log('✅ User session validated');
     console.log(`🍪 Session has ${userSession.cookies.length} cookies`);
     console.log(`👤 User email: ${userSession.email}`);
+    console.log(`📄 Requesting page: ${page}`); // NEW: Log page number
     
     // Format and validate inputs
     const formattedGuests = formatGuestsForRateHawk(guests);
@@ -420,6 +483,10 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
       ourSessionId: ourSessionId,
       partnerSlug: partnerSlug
     });
+
+    // Build RateHawk filter parameters from our filters
+    const ratehawkFilters = buildRateHawkFilters(filters);
+    console.log('🔧 RateHawk filters:', ratehawkFilters);
     
     // Build common headers
     const commonHeaders = {
@@ -459,15 +526,24 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
         residency: residency,
         paxes: formattedGuests
       },
-      page: 1,
+      page: page, // NEW: Use the page parameter here
       map_hotels: true,
       session_id: ourSessionId
     };
     
     console.log('🎯 Session creation payload:', JSON.stringify(sessionPayload, null, 2));
     
-    // RateHawk requires session parameter in URL for first request too
-    const sessionUrl = `https://www.ratehawk.com/hotel/search/v2/b2bsite/serp?session=${ourSessionId}`;
+    // Build URL with filters
+  let sessionUrl = `https://www.ratehawk.com/hotel/search/v2/b2bsite/serp?session=${ourSessionId}`;
+
+  // Add filter parameters to URL
+  Object.entries(ratehawkFilters).forEach(([key, value]) => {
+    if (value) {
+      sessionUrl += `&${key}=${encodeURIComponent(value)}`;
+    }
+  });
+
+console.log('🌐 Session creation URL with filters:', sessionUrl);
     console.log('🌐 Session creation URL:', sessionUrl);
     
     const sessionResponse = await fetch(sessionUrl, {
@@ -516,7 +592,17 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
     // STEP 2: Get search results using RateHawk's session ID
     console.log('📡 STEP 2: Getting search results...');
     
-    const searchUrl = `https://www.ratehawk.com/hotel/search/v2/b2bsite/serp?session=${realSessionId}`;
+    // Build search URL with filters
+    let searchUrl = `https://www.ratehawk.com/hotel/search/v2/b2bsite/serp?session=${realSessionId}`;
+
+    // Add filter parameters to URL
+    Object.entries(ratehawkFilters).forEach(([key, value]) => {
+      if (value) {
+        searchUrl += `&${key}=${encodeURIComponent(value)}`;
+      }
+    });
+
+    console.log('🌐 Search URL with filters:', searchUrl);
     console.log('🌐 Search URL:', searchUrl);
     
     // For the search request, we might need a slightly different payload
@@ -532,7 +618,7 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
         residency: residency,
         paxes: formattedGuests
       },
-      page: 1,
+      page: page, // NEW: Use the page parameter here too
       map_hotels: true,
       session_id: realSessionId
     };
@@ -602,7 +688,15 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
     const transformedHotels = transformHotelData(hotels);
     const duration = Date.now() - startTime;
     
+    // NEW: Calculate pagination info
+    const hotelsPerPage = 20; // RateHawk default
+    const currentPage = page;
+    const totalPages = Math.ceil(totalHotels / hotelsPerPage);
+    const hasNext = currentPage < totalPages && hotels.length === hotelsPerPage;
+    const hasPrevious = currentPage > 1;
+    
     console.log(`✅ Search completed in ${duration}ms with ${transformedHotels.length} hotels`);
+    console.log(`📄 Pagination: Page ${currentPage} of ${totalPages}, hasNext: ${hasNext}, hasPrevious: ${hasPrevious}`);
     
     return {
       success: true,
@@ -611,6 +705,9 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
       availableHotels: availableHotels || transformedHotels.length,
       searchSessionId: realSessionId,
       searchDuration: `${duration}ms`,
+      // NEW: Simple pagination info for load more
+      hasMorePages: hotels.length === 20, // If we got 20 hotels, there might be more
+      currentPage: page,
       metadata: {
         strategy: 'two_step_api',
         sessionCreated: true,
