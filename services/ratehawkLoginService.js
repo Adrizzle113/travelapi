@@ -2,10 +2,10 @@ const puppeteer = require('puppeteer-core');
 
 /**
  * RateHawk Login Service
- * Handles authentication and session management for RateHawk
+ * Updated with new Browserless endpoint
  */
 
-// Main RateHawk login function with enhanced navigation detection
+// Main RateHawk login function with new Browserless endpoint
 async function loginUserToRateHawk(email, password, userId) {
   console.log('===== STARTING RATEHAWK LOGIN =====');
   console.log(`🔐 User ID: ${userId}`);
@@ -14,12 +14,13 @@ async function loginUserToRateHawk(email, password, userId) {
   
   let browser;
   try {
-    // Connect to Browserless
+    // Connect to NEW Browserless endpoint
+    console.log('🔗 Connecting to new Browserless endpoint...');
     browser = await puppeteer.connect({
-      browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}&--window-size=1920,1080`
+      browserWSEndpoint: `wss://production-sfo.browserless.io?token=${process.env.BROWSERLESS_TOKEN}&--window-size=1920,1080`
     });
 
-    console.log('🌐 Connected to Browserless browser');
+    console.log('🌐 Connected to Browserless browser (new endpoint)');
     
     const page = await browser.newPage();
     
@@ -40,7 +41,7 @@ async function loginUserToRateHawk(email, password, userId) {
     // Give page time to fully load
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    console.log('✍️ Filling login credentials with enhanced method...');
+    console.log('✍️ Filling login credentials...');
     
     // Enhanced form filling with multiple approaches
     const formFillResult = await page.evaluate((email, password) => {
@@ -104,7 +105,7 @@ async function loginUserToRateHawk(email, password, userId) {
     // Wait a moment for form validation
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    console.log('🚀 Submitting login form with multiple methods...');
+    console.log('🚀 Submitting login form...');
     
     // Enhanced form submission with multiple approaches
     const submitResult = await page.evaluate(() => {
@@ -153,7 +154,7 @@ async function loginUserToRateHawk(email, password, userId) {
       await page.keyboard.press('Enter');
     }
 
-    console.log('⏳ Waiting for login result (cookie-based detection)...');
+    console.log('⏳ Waiting for login result (enhanced detection)...');
     
     let loginSuccess = false;
     let finalUrl = '';
@@ -162,7 +163,7 @@ async function loginUserToRateHawk(email, password, userId) {
     let navigationDetected = false;
     
     try {
-      // Set up detection promises
+      // Enhanced detection with multiple methods
       const detectionPromises = [
         // Method 1: Monitor cookies and API responses
         new Promise((resolve) => {
@@ -241,34 +242,7 @@ async function loginUserToRateHawk(email, password, userId) {
           checkCookiesAndUrl();
         }),
         
-        // Method 2: Listen for API responses
-        new Promise((resolve) => {
-          page.on('response', async (response) => {
-            const url = response.url();
-            if (url.includes('/api/v4/site/accounts/login/')) {
-              console.log(`📡 Login API response: ${response.status()} for ${url}`);
-              if (response.status() === 200) {
-                try {
-                  const responseText = await response.text();
-                  console.log('📄 Login API response preview:', responseText.substring(0, 300));
-                  
-                  // Check if response indicates success
-                  if (responseText.includes('"status":"ok"') || 
-                      responseText.includes('"success":true') ||
-                      responseText.includes('redirect') ||
-                      (!responseText.includes('error') && !responseText.includes('invalid'))) {
-                    console.log('✅ Login API indicates success!');
-                    resolve({ method: 'api_success', success: true });
-                  }
-                } catch (e) {
-                  console.log('⚠️ Could not read API response body');
-                }
-              }
-            }
-          });
-        }),
-        
-        // Method 3: Navigation listener
+        // Method 2: Navigation listener
         new Promise((resolve) => {
           page.on('framenavigated', (frame) => {
             if (frame === page.mainFrame()) {
@@ -374,40 +348,6 @@ async function loginUserToRateHawk(email, password, userId) {
       sessionId = sessionCookie ? sessionCookie.value : `session_${userId}_${Date.now()}`;
     }
     
-    // Enhanced error detection for failed logins
-    let errorMessage = null;
-    if (!loginSuccess) {
-      try {
-        errorMessage = await page.evaluate(() => {
-          // Look for error messages
-          const errorSelectors = [
-            '.error', '.alert-danger', '.invalid-feedback',
-            '[class*="error"]', '[class*="invalid"]'
-          ];
-          
-          for (const selector of errorSelectors) {
-            const element = document.querySelector(selector);
-            if (element && element.textContent.trim()) {
-              return element.textContent.trim();
-            }
-          }
-          
-          // Check for error text in page content
-          const bodyText = document.body.textContent.toLowerCase();
-          if (bodyText.includes('wrong password') || 
-              bodyText.includes('invalid credentials') ||
-              bodyText.includes('login failed') ||
-              bodyText.includes('incorrect')) {
-            return 'Invalid credentials detected in page content';
-          }
-          
-          return null;
-        });
-      } catch (e) {
-        console.log('Could not check for error messages');
-      }
-    }
-    
     console.log(`🎯 FINAL LOGIN RESULT: ${loginSuccess ? 'SUCCESS' : 'FAILED'}`);
     console.log(`🔑 Session ID: ${sessionId}`);
     console.log(`🔗 Final URL: ${finalUrl}`);
@@ -428,22 +368,34 @@ async function loginUserToRateHawk(email, password, userId) {
         isAuth: cookies.find(c => c.name.includes('is_auth'))?.value || 'true',
         domainUid: cookies.find(c => c.name.includes('uid'))?.value || '',
         navigationDetected: navigationDetected,
-        cookieCount: cookies.length
+        cookieCount: cookies.length,
+        browserlessEndpoint: 'production-sfo.browserless.io' // NEW: Track which endpoint was used
       };
     } else {
       console.log('❌ RateHawk authentication failed');
       
       return {
         success: false,
-        error: errorMessage || 'Authentication failed - credentials may be invalid',
+        error: 'Authentication failed - credentials may be invalid',
         finalUrl: finalUrl,
         cookieCount: cookies.length,
+        browserlessEndpoint: 'production-sfo.browserless.io',
         rawCookies: cookies.map(c => ({ name: c.name, domain: c.domain })) // For debugging
       };
     }
 
   } catch (error) {
     console.error('💥 Login automation error:', error.message);
+    
+    // Check if it's a connection error to the new endpoint
+    if (error.message.includes('ENOTFOUND') || error.message.includes('production-sfo.browserless.io')) {
+      console.error('🔗 Connection failed to new Browserless endpoint');
+      return {
+        success: false,
+        error: `Failed to connect to Browserless (new endpoint): ${error.message}. Please check your token and network connection.`
+      };
+    }
+    
     return {
       success: false,
       error: `Login automation failed: ${error.message}`
@@ -498,8 +450,51 @@ function validateSession(session) {
   return hasEssentialCookies && session.cookies.length >= 15;
 }
 
+/**
+ * Test the new Browserless connection
+ */
+async function testBrowserlessConnection() {
+  console.log('🧪 Testing new Browserless endpoint connection...');
+  
+  let browser;
+  try {
+    browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://production-sfo.browserless.io?token=${process.env.BROWSERLESS_TOKEN}&timeout=30000`
+    });
+    
+    const page = await browser.newPage();
+    await page.goto('https://www.google.com', { timeout: 15000 });
+    
+    const title = await page.title();
+    
+    console.log('✅ New Browserless endpoint test successful!');
+    console.log(`📄 Page title: ${title}`);
+    
+    return {
+      success: true,
+      title: title,
+      endpoint: 'production-sfo.browserless.io',
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    console.error('❌ New Browserless endpoint test failed:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      endpoint: 'production-sfo.browserless.io',
+      timestamp: new Date().toISOString()
+    };
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+}
+
 module.exports = { 
   loginUserToRateHawk, 
   formatCookiesForRequest,
-  validateSession
+  validateSession,
+  testBrowserlessConnection
 };
