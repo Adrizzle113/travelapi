@@ -401,12 +401,91 @@ const {
   formatGuestsForRateHawk, 
   getDestinationInfo,
   formatCookiesForRequest,
-  extractCSRFToken
+  extractCSRFToken,
+  transformHotelData
 } = require('./ratehawkHelpers');
 
+/**
+ * Main hotel search function with real RateHawk API integration
+ */
+async function searchHotels({ userSession, destination, checkin, checkout, guests, residency = 'en-us', currency = 'USD', page = 1, filters = {} }) {
+  console.log('🔍 === STARTING RATEHAWK HOTEL SEARCH ===');
+  console.log('📋 Search parameters:', JSON.stringify({
+    destination,
+    checkin,
+    checkout,
+    guests,
+    residency,
+    currency,
+    page
+  }, null, 2));
+  
+  const startTime = Date.now();
+  
+  try {
+    // Validate user session
+    if (!userSession || !userSession.cookies || !Array.isArray(userSession.cookies)) {
+      console.log('❌ Invalid user session');
+      return {
+        success: false,
+        error: 'Invalid user session. Please login again.',
+        hotels: [],
+        totalHotels: 0,
+        availableHotels: 0
+      };
+    }
+    
+    console.log(`✅ User session valid: ${userSession.cookies?.length || 0} cookies`);
+    
+    // Use the performBasicSearch from helpers
+    const searchResult = await performBasicSearch({
+      userSession,
+      destination,
+      checkin,
+      checkout,
+      guests,
+      residency,
+      currency,
+      page,
+      filters
+    });
+    
+    const duration = Date.now() - startTime;
+    console.log(`✅ Search completed in ${duration}ms`);
+    console.log(`🏨 Final results: ${searchResult.hotels?.length || 0} hotels`);
+    
+    return {
+      ...searchResult,
+      searchDuration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('💥 Hotel search failed:', error);
+    
+    return {
+      success: false,
+      error: `Search failed: ${error.message}`,
+      hotels: [],
+      totalHotels: 0,
+      availableHotels: 0,
+      searchDuration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+      debug: {
+        destination,
+        checkin,
+        checkout,
+        errorType: error.name || 'Unknown'
+      }
+    };
+  } finally {
+    const duration = Date.now() - startTime;
+    console.log(`🏁 Search service completed in ${duration}ms`);
+    console.log('=== END RATEHAWK HOTEL SEARCH ===');
+  }
+}
+
 module.exports = {
-  searchHotels,
-  fetchSingleHotelBookingData,
-  getBookingUrlForRate,
-  openBookingUrl
+  searchHotels
 };
