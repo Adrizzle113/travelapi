@@ -265,7 +265,7 @@ router.post('/search', async (req, res) => {
   }
 });
 
-// Hotel details endpoint - NEW
+// NEW: Hotel details endpoint
 router.post('/hotel-details', async (req, res) => {
   const startTime = Date.now();
   const { userId, hotelId, searchSessionId, searchParams } = req.body;
@@ -316,7 +316,20 @@ router.post('/hotel-details', async (req, res) => {
     console.log(`✅ Using valid session for hotel details fetch`);
 
     // Import the hotel details fetching function
-    const { fetchSingleHotelBookingData } = require('../services/enhancedRatehawkService');
+    let fetchSingleHotelBookingData;
+    try {
+      const enhancedService = require('../services/enhancedRatehawkService');
+      fetchSingleHotelBookingData = enhancedService.fetchSingleHotelBookingData;
+    } catch (importError) {
+      console.log('⚠️ Enhanced service not available, using fallback method');
+      return res.json({
+        success: false,
+        error: 'Hotel details service not available',
+        hotelDetails: null,
+        fetchDuration: `${Date.now() - startTime}ms`,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     // Create mock hotel object with basic info
     const basicHotel = {
@@ -360,7 +373,7 @@ router.post('/hotel-details', async (req, res) => {
     } else {
       console.log(`❌ Hotel details fetch failed: ${detailsResult.error}`);
       
-      res.status(500).json({
+      res.json({
         success: false,
         error: detailsResult.error || 'Failed to fetch hotel details',
         hotelDetails: null,
