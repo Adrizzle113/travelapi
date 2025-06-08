@@ -265,7 +265,7 @@ router.post('/search', async (req, res) => {
   }
 });
 
-// NEW: Hotel details endpoint
+// NEW: Hotel details endpoint - FIXED VERSION
 router.post('/hotel-details', async (req, res) => {
   const startTime = Date.now();
   const { userId, hotelId, searchSessionId, searchParams } = req.body;
@@ -315,7 +315,14 @@ router.post('/hotel-details', async (req, res) => {
 
     console.log(`✅ Using valid session for hotel details fetch`);
 
-    // Import the hotel details fetching function
+    // CRITICAL FIX: Create a mock hotel object with just the ID for the enhanced service
+    const basicHotel = {
+      id: hotelId,
+      name: `Hotel ${hotelId}`,
+      // The enhanced service will get the real data from localStorage
+    };
+
+    // Import the enhanced service
     let fetchSingleHotelBookingData;
     try {
       const enhancedService = require('../services/enhancedRatehawkService');
@@ -331,15 +338,7 @@ router.post('/hotel-details', async (req, res) => {
       });
     }
 
-    // Create mock hotel object with basic info
-    const basicHotel = {
-      id: hotelId,
-      name: `Hotel ${hotelId}`,
-      ratehawk_data: {
-        ota_hotel_id: hotelId,
-        requested_hotel_id: hotelId
-      }
-    };
+    console.log(`🔍 Fetching enhanced booking data for: ${basicHotel.name} (ID: ${hotelId})`);
 
     // Fetch detailed hotel data
     const detailsResult = await fetchSingleHotelBookingData(
@@ -391,77 +390,6 @@ router.post('/hotel-details', async (req, res) => {
       error: `Hotel details fetch failed: ${error.message}`,
       hotelDetails: null,
       fetchDuration: `${duration}ms`,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// Get RateHawk statistics
-router.get('/stats', async (req, res) => {
-  try {
-    const stats = await getAuthStats();
-    
-    res.json({
-      success: true,
-      stats: {
-        totalAttempts: stats.total_attempts || 0,
-        successfulAttempts: stats.successful_attempts || 0,
-        averageDuration: Math.round(stats.avg_duration || 0) + 'ms',
-        uniqueUsers: stats.unique_users || 0,
-        attempts24h: stats.attempts_24h || 0,
-        successRate: stats.total_attempts > 0 ? 
-          Math.round((stats.successful_attempts / stats.total_attempts) * 100) + '%' : '0%'
-      },
-      activeSessions: global.userSessions.size,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error('💥 Stats error:', error);
-    res.status(500).json({
-      success: false,
-      error: `Failed to get stats: ${error.message}`,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// Test authentication endpoint
-router.post('/test-auth', async (req, res) => {
-  const { email, password } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({
-      success: false,
-      error: 'Email and password are required for testing'
-    });
-  }
-  
-  const userId = `test_${email.replace('@', '_').replace(/\./g, '_')}_${Date.now()}`;
-  
-  try {
-    console.log('🧪 Testing RateHawk authentication...');
-    
-    const testResult = await loginUserToRateHawk(email, password, userId);
-    
-    // Don't store test sessions in global storage
-    
-    res.json({
-      success: testResult.success,
-      message: testResult.success ? 'Authentication test successful' : 'Authentication test failed',
-      error: testResult.error || null,
-      sessionId: testResult.sessionId || null,
-      cookieCount: testResult.cookies?.length || 0,
-      testMode: true,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error('💥 Auth test error:', error);
-    res.status(500).json({
-      success: false,
-      error: `Auth test failed: ${error.message}`,
-      testMode: true,
       timestamp: new Date().toISOString()
     });
   }

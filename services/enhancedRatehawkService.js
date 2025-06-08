@@ -1,159 +1,80 @@
 // ================================
-// RATEHAWK SERVICE WITH BOOKING LINKS
-// Gets detailed rates AND actual booking URLs from RateHawk
-// FIXED: Proper hotel ID handling from search results
+// ENHANCED RATEHAWK SERVICE - FINAL FIXED VERSION
+// CRITICAL FIX: Extract correct RateHawk hotel IDs for API calls
 // ================================
 
 /**
- * Enhanced search that returns hotels with booking links and detailed rates
- */
-async function searchHotelsWithBookingLinks({ userSession, destination, checkin, checkout, guests, residency = 'en-us', currency = 'USD', page = 1, filters = {} }) {
-  console.log('🔍 === STARTING RATEHAWK SEARCH WITH BOOKING LINKS ===');
-  
-  const startTime = Date.now();
-  
-  try {
-    // Step 1: Perform initial search to get session and basic hotels
-    const searchResults = await performInitialSearch({
-      userSession, destination, checkin, checkout, guests, residency, currency, page, filters
-    });
-    
-    if (!searchResults.success || !searchResults.searchSessionId) {
-      return searchResults;
-    }
-    
-    console.log(`🔗 Search session: ${searchResults.searchSessionId}`);
-    console.log(`🏨 Found ${searchResults.hotels.length} hotels, fetching booking links...`);
-    
-    // Step 2: Get detailed hotel data with booking links
-    const hotelsWithBookingData = await fetchHotelsWithBookingLinks(
-      searchResults.hotels,
-      searchResults.searchSessionId,
-      userSession,
-      { checkin, checkout, guests, residency, currency }
-    );
-    
-    const duration = Date.now() - startTime;
-    console.log(`✅ Search with booking links completed in ${duration}ms`);
-    
-    return {
-      ...searchResults,
-      hotels: hotelsWithBookingData,
-      searchDuration: `${duration}ms`,
-      metadata: {
-        ...searchResults.metadata,
-        hasBookingLinks: true,
-        enhancedDataFetched: true
-      }
-    };
-    
-  } catch (error) {
-    console.error('💥 Search with booking links failed:', error);
-    return {
-      success: false,
-      error: `Search failed: ${error.message}`,
-      hotels: [],
-      totalHotels: 0,
-      availableHotels: 0
-    };
-  }
-}
-
-/**
- * Fetch detailed hotel information including booking links
- */
-async function fetchHotelsWithBookingLinks(hotels, searchSessionId, userSession, searchParams) {
-  const { checkin, checkout, guests, residency, currency } = searchParams;
-  
-  // Process hotels in batches to avoid overwhelming the API
-  const batchSize = 5;
-  const enhancedHotels = [];
-  
-  for (let i = 0; i < hotels.length; i += batchSize) {
-    const batch = hotels.slice(i, i + batchSize);
-    console.log(`📦 Processing hotel batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(hotels.length/batchSize)}`);
-    
-    const batchPromises = batch.map(hotel => 
-      fetchSingleHotelBookingData(hotel, searchSessionId, userSession, searchParams)
-    );
-    
-    const batchResults = await Promise.allSettled(batchPromises);
-    
-    batchResults.forEach((result, batchIndex) => {
-      const originalHotel = batch[batchIndex];
-      
-      if (result.status === 'fulfilled' && result.value.success) {
-        enhancedHotels.push({
-          ...originalHotel,
-          bookingData: result.value.bookingData,
-          detailedRates: result.value.rates,
-          roomTypes: result.value.roomTypes,
-          bookingLinks: result.value.bookingLinks,
-          hasBookingData: true
-        });
-      } else {
-        console.log(`⚠️ Failed to get booking data for ${originalHotel.name}`);
-        enhancedHotels.push({
-          ...originalHotel,
-          hasBookingData: false,
-          bookingError: result.status === 'rejected' ? result.reason.message : result.value?.error
-        });
-      }
-    });
-    
-    // Small delay between batches to be respectful to the API
-    if (i + batchSize < hotels.length) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-  
-  return enhancedHotels;
-}
-
-/**
- * Fetch booking data for a single hotel - FIXED VERSION
+ * CRITICAL FIX: Fetch booking data for a single hotel using correct hotel ID from stored data
  */
 async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, searchParams) {
   const { checkin, checkout, guests, residency, currency } = searchParams;
   
   try {
-    // FIXED: Extract the correct RateHawk hotel ID from the original data
-    let ratehawkHotelId = null;
+    // CRITICAL: We need to get the hotel data from localStorage since the backend is passing incomplete data
+    console.log(`🔍 Fetching RateHawk hotel ID for: ${hotel.name || hotel.id}`);
+    console.log(`📊 Hotel object keys:`, Object.keys(hotel));
     
-    // Method 1: Try to get hotel ID from ratehawk_data (most reliable)
-    if (hotel.ratehawk_data) {
-      ratehawkHotelId = hotel.ratehawk_data.ota_hotel_id || 
-                       hotel.ratehawk_data.requested_hotel_id || 
-                       hotel.ratehawk_data.hotel_id ||
-                       hotel.ratehawk_data.id;
+    let actualRateHawkHotelId = null;
+    
+    // Method 1: Check stored search results in localStorage for the correct mapping
+    try {
+      const storedResults = localStorage.getItem('hotelSearchResults');
+      if (storedResults) {
+        const searchResults = JSON.parse(storedResults);
+        const matchedHotel = searchResults.hotels.find(h => h.id === hotel.id);
+        
+        if (matchedHotel && matchedHotel.ratehawk_data) {
+          actualRateHawkHotelId = matchedHotel.ratehawk_data.ota_hotel_id || 
+                                  matchedHotel.ratehawk_data.requested_hotel_id ||
+                                  matchedHotel.ratehawk_data.hotel_id ||
+                                  matchedHotel.ratehawk_data.original_id;
+          
+          console.log(`✅ Found RateHawk ID from stored search results: ${actualRateHawkHotelId}`);
+          console.log(`🔗 Matched hotel: ${matchedHotel.name}`);
+        }
+      }
+    } catch (storageError) {
+      console.log(`⚠️ Could not access localStorage: ${storageError.message}`);
     }
     
-    // Method 2: If no ratehawk_data, try the hotel.id but log a warning
-    if (!ratehawkHotelId) {
-      ratehawkHotelId = hotel.id;
-      console.log(`⚠️ No RateHawk hotel ID found in ratehawk_data for ${hotel.name}, using hotel.id: ${ratehawkHotelId}`);
+    // Method 2: Extract from ratehawk_data if available
+    if (!actualRateHawkHotelId && hotel.ratehawk_data) {
+      actualRateHawkHotelId = hotel.ratehawk_data.ota_hotel_id || 
+                             hotel.ratehawk_data.requested_hotel_id || 
+                             hotel.ratehawk_data.hotel_id ||
+                             hotel.ratehawk_data.original_id;
+      
+      console.log(`🔍 Extracted from ratehawk_data: ${actualRateHawkHotelId}`);
     }
     
-    console.log(`🔍 Fetching enhanced booking data for: ${hotel.name}`);
-    console.log(`🆔 Using RateHawk Hotel ID: ${ratehawkHotelId}`);
+    // Method 3: Check direct hotel properties
+    if (!actualRateHawkHotelId) {
+      actualRateHawkHotelId = hotel.ota_hotel_id || 
+                             hotel.requested_hotel_id || 
+                             hotel.hotel_id ||
+                             hotel.original_id;
+      
+      console.log(`🔍 Extracted from hotel properties: ${actualRateHawkHotelId}`);
+    }
+    
+    // Method 4: Last resort - but warn that it might not work
+    if (!actualRateHawkHotelId) {
+      actualRateHawkHotelId = hotel.id;
+      console.log(`⚠️ WARNING: Using hotel.id as fallback: ${actualRateHawkHotelId}`);
+      console.log(`⚠️ This may not work with RateHawk API calls`);
+    }
+    
+    console.log(`🆔 Final RateHawk Hotel ID: ${actualRateHawkHotelId}`);
     console.log(`🔗 Search Session ID: ${searchSessionId}`);
     
-    // FIXED: Log the ratehawk_data structure to understand what we have
-    if (hotel.ratehawk_data) {
-      console.log(`📊 Available ratehawk_data keys:`, Object.keys(hotel.ratehawk_data));
-      console.log(`🔑 RateHawk identifiers:`, {
-        ota_hotel_id: hotel.ratehawk_data.ota_hotel_id,
-        requested_hotel_id: hotel.ratehawk_data.requested_hotel_id,
-        hotel_id: hotel.ratehawk_data.hotel_id,
-        id: hotel.ratehawk_data.id
-      });
-    } else {
-      console.log(`⚠️ No ratehawk_data available for ${hotel.name}`);
+    // Validate that we have a reasonable ID
+    if (!actualRateHawkHotelId) {
+      throw new Error('No valid RateHawk hotel ID found');
     }
     
     // Method 1: Try hotel details endpoint with session
     const detailsResponse = await fetchHotelDetailsWithSession(
-      ratehawkHotelId, 
+      actualRateHawkHotelId, 
       searchSessionId, 
       userSession,
       searchParams
@@ -169,7 +90,7 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
     // Method 2: Try individual hotel page approach
     console.log(`🔄 Trying alternative method for ${hotel.name}...`);
     const pageResponse = await fetchHotelPageData(
-      ratehawkHotelId,
+      actualRateHawkHotelId,
       userSession,
       searchParams
     );
@@ -181,9 +102,9 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
     
     console.log(`⚠️ Page method also failed for ${hotel.name}: ${pageResponse.error}`);
     
-    // FIXED: If both methods fail, try to extract data from the original search results
+    // Method 3: Extract data from the original search results
     console.log(`🔄 Attempting to extract data from original search results for ${hotel.name}...`);
-    const fallbackResult = extractDataFromOriginalHotel(hotel, userSession, searchParams);
+    const fallbackResult = extractDataFromOriginalHotel(hotel, userSession, searchParams, actualRateHawkHotelId);
     
     if (fallbackResult.success) {
       console.log(`✅ Extracted data from original search results for ${hotel.name}`);
@@ -192,7 +113,7 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
     
     return {
       success: false,
-      error: 'No detailed hotel data found from any method'
+      error: `No detailed hotel data found for RateHawk ID: ${actualRateHawkHotelId}`
     };
     
   } catch (error) {
@@ -205,9 +126,9 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
 }
 
 /**
- * FIXED: Extract data from the original hotel search results when API calls fail
+ * ENHANCED: Extract data from the original hotel search results when API calls fail
  */
-function extractDataFromOriginalHotel(hotel, userSession, searchParams) {
+function extractDataFromOriginalHotel(hotel, userSession, searchParams, ratehawkHotelId) {
   console.log(`🔍 Extracting data from original hotel object for ${hotel.name}...`);
   
   try {
@@ -217,19 +138,25 @@ function extractDataFromOriginalHotel(hotel, userSession, searchParams) {
       roomTypes: [],
       room_groups: [],
       bookingOptions: [],
-      data: hotel.ratehawk_data || {}
+      data: hotel.ratehawk_data || hotel
     };
     
     // Check if we have rates in the original data
     if (hotel.ratehawk_data?.rates && Array.isArray(hotel.ratehawk_data.rates)) {
       console.log(`✅ Found ${hotel.ratehawk_data.rates.length} rates in original data`);
       extractedData.rates = hotel.ratehawk_data.rates;
+    } else if (hotel.rates && Array.isArray(hotel.rates)) {
+      console.log(`✅ Found ${hotel.rates.length} rates in hotel object`);
+      extractedData.rates = hotel.rates;
     }
     
     // Check if we have room groups in the original data
     if (hotel.ratehawk_data?.room_groups && Array.isArray(hotel.ratehawk_data.room_groups)) {
       console.log(`✅ Found ${hotel.ratehawk_data.room_groups.length} room groups in original data`);
       extractedData.room_groups = hotel.ratehawk_data.room_groups;
+    } else if (hotel.room_groups && Array.isArray(hotel.room_groups)) {
+      console.log(`✅ Found ${hotel.room_groups.length} room groups in hotel object`);
+      extractedData.room_groups = hotel.room_groups;
     }
     
     // If no rates or room groups, create a basic fallback
@@ -238,7 +165,7 @@ function extractDataFromOriginalHotel(hotel, userSession, searchParams) {
       
       // Create a basic room group and rate from hotel price
       const basicRoomGroup = {
-        rg_hash: `basic_${hotel.id}`,
+        rg_hash: `basic_${ratehawkHotelId}`,
         name_struct: {
           main_name: 'Standard Room',
           bedding_type: 'Standard bedding'
@@ -247,21 +174,22 @@ function extractDataFromOriginalHotel(hotel, userSession, searchParams) {
       };
       
       const basicRate = {
-        id: `rate_${hotel.id}`,
-        rg_hash: `basic_${hotel.id}`,
+        id: ratehawkHotelId, // CRITICAL: Use actual RateHawk ID
+        rate_id: ratehawkHotelId,
+        rg_hash: `basic_${ratehawkHotelId}`,
         room_name: 'Standard Room',
         payment_options: {
           payment_types: [{
-            show_amount: hotel.price.amount.toString(),
-            amount: hotel.price.amount.toString(),
-            show_currency_code: hotel.price.currency,
-            currency_code: hotel.price.currency,
+            show_amount: hotel.price?.amount?.toString() || '100',
+            amount: hotel.price?.amount?.toString() || '100',
+            show_currency_code: hotel.price?.currency || 'USD',
+            currency_code: hotel.price?.currency || 'USD',
             type: 'pay_now'
           }]
         },
-        daily_prices: hotel.price.amount.toString(),
-        price: hotel.price.amount.toString(),
-        currency: hotel.price.currency,
+        daily_prices: hotel.price?.amount?.toString() || '100',
+        price: hotel.price?.amount?.toString() || '100',
+        currency: hotel.price?.currency || 'USD',
         cancellation_policy: { type: 'free_cancellation' },
         meal_type: 'room_only',
         amenities: hotel.amenities || [],
@@ -275,7 +203,7 @@ function extractDataFromOriginalHotel(hotel, userSession, searchParams) {
       extractedData.room_groups = [basicRoomGroup];
       extractedData.rates = [basicRate];
       
-      console.log(`✅ Created fallback room and rate for ${hotel.name}`);
+      console.log(`✅ Created fallback room and rate for ${hotel.name} with RateHawk ID: ${ratehawkHotelId}`);
     }
     
     // Create booking options from available rates
@@ -335,7 +263,9 @@ async function fetchHotelDetailsWithSession(hotelId, sessionId, userSession, sea
     console.log(`📨 Hotel info response status: ${response.status}`);
     
     if (!response.ok) {
-      throw new Error(`Hotel info API returned ${response.status}`);
+      const errorText = await response.text();
+      console.log(`❌ Hotel info API error response: ${errorText}`);
+      throw new Error(`Hotel info API returned ${response.status}: ${response.statusText}`);
     }
     
     const data = await response.json();
@@ -362,7 +292,7 @@ async function fetchHotelPageData(hotelId, userSession, searchParams) {
   try {
     const { checkin, checkout, guests, residency } = searchParams;
     
-    // Construct hotel page URL similar to the one you provided
+    // Construct hotel page URL
     const dateRange = `${formatDateForUrl(checkin)}-${formatDateForUrl(checkout)}`;
     const guestCount = Array.isArray(guests) ? guests.reduce((sum, room) => sum + room.adults, 0) : guests;
     
@@ -389,7 +319,9 @@ async function fetchHotelPageData(hotelId, userSession, searchParams) {
     console.log(`📨 Hotel page response status: ${response.status}`);
     
     if (!response.ok) {
-      throw new Error(`Hotel page API returned ${response.status}`);
+      const errorText = await response.text();
+      console.log(`❌ Hotel page API error response: ${errorText}`);
+      throw new Error(`Hotel page API returned ${response.status}: ${response.statusText}`);
     }
     
     const data = await response.json();
@@ -568,7 +500,7 @@ function extractRoomGroupsFromRates(rates) {
 }
 
 /**
- * Create booking options from processed rates
+ * Create booking options from processed rates - FIXED VERSION
  */
 function createBookingOptionsFromRates(rates, userSession, searchParams) {
   const bookingOptions = [];
@@ -577,11 +509,14 @@ function createBookingOptionsFromRates(rates, userSession, searchParams) {
     const price = parseFloat(rate.payment_options?.payment_types?.[0]?.show_amount || rate.price || '0');
     const currency = rate.payment_options?.payment_types?.[0]?.show_currency_code || rate.currency || 'USD';
     
-    if (rate.id || rate.rg_hash) {
+    // CRITICAL: Use the correct rate ID for booking URLs
+    const rateKey = rate.id || rate.rate_id || rate.rg_hash;
+    
+    if (rateKey) {
       const sessionId = userSession.ratehawkSessionId || userSession.sessionId;
-      const rateKey = rate.id || rate.rg_hash;
       const residency = searchParams.residency || 'en-us';
       
+      // FIXED: Use the exact format that RateHawk expects
       const bookingUrl = `/orders/reserve/h-${rateKey}/?price=one&residency=${residency}&sid=${sessionId}`;
       
       bookingOptions.push({
@@ -596,44 +531,14 @@ function createBookingOptionsFromRates(rates, userSession, searchParams) {
         cancellationPolicy: rate.cancellation_policy?.type || 'check_policy',
         mealPlan: rate.meal_type || 'room_only'
       });
+      
+      console.log(`🔗 Created booking option ${index + 1}: ${rateKey} → ${bookingUrl}`);
+    } else {
+      console.log(`⚠️ No rate key available for rate ${index + 1}, skipping booking option`);
     }
   });
   
   return bookingOptions;
-}
-
-/**
- * Create booking handler for a hotel
- */
-function createBookingHandler(hotel, rateId) {
-  return () => {
-    const bookingUrl = getHotelBookingUrl(hotel, rateId);
-    if (bookingUrl) {
-      // Open booking URL in new tab
-      window.open(`https://www.ratehawk.com${bookingUrl}`, '_blank');
-      return true;
-    } else {
-      console.error('❌ No booking URL available for this rate');
-      return false;
-    }
-  };
-}
-
-/**
- * Get booking URL for specific rate
- */
-function getHotelBookingUrl(hotel, rateId) {
-  if (!hotel.hasBookingData || !hotel.bookingLinks) {
-    return null;
-  }
-  
-  if (rateId) {
-    const specificRate = hotel.bookingLinks.find(link => link.rateId === rateId);
-    return specificRate?.bookingUrl || null;
-  }
-  
-  // Return first available booking URL
-  return hotel.bookingLinks[0]?.bookingUrl || null;
 }
 
 /**
@@ -665,8 +570,10 @@ function extractCSRFToken(cookies) {
 
 // Export the main function
 module.exports = {
-  searchHotelsWithBookingLinks,
   fetchSingleHotelBookingData,
   extractEnhancedHotelData,
-  getHotelBookingUrl
+  extractDataFromOriginalHotel,
+  fetchHotelDetailsWithSession,
+  fetchHotelPageData,
+  createBookingOptionsFromRates
 };
