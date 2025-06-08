@@ -110,7 +110,7 @@ async function fetchHotelsWithBookingLinks(hotels, searchSessionId, userSession,
 }
 
 /**
- * Fetch booking data for a single hotel
+ * Fetch booking data for a single hotel - ENHANCED VERSION
  */
 async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, searchParams) {
   const { checkin, checkout, guests, residency, currency } = searchParams;
@@ -120,7 +120,7 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
                            hotel.ratehawk_data?.requested_hotel_id || 
                            hotel.id;
     
-    console.log(`🔍 Fetching booking data for: ${hotel.name} (ID: ${ratehawkHotelId})`);
+    console.log(`🔍 Fetching enhanced booking data for: ${hotel.name} (ID: ${ratehawkHotelId})`);
     
     // Method 1: Try hotel details endpoint with session
     const detailsResponse = await fetchHotelDetailsWithSession(
@@ -131,7 +131,7 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
     );
     
     if (detailsResponse.success) {
-      return detailsResponse;
+      return extractEnhancedHotelData(detailsResponse.data, userSession, searchParams);
     }
     
     // Method 2: Try individual hotel page approach
@@ -142,7 +142,14 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
       searchParams
     );
     
-    return pageResponse;
+    if (pageResponse.success) {
+      return extractEnhancedHotelData(pageResponse.data, userSession, searchParams);
+    }
+    
+    return {
+      success: false,
+      error: 'No detailed hotel data found'
+    };
     
   } catch (error) {
     console.error(`💥 Error fetching booking data for ${hotel.name}:`, error);
@@ -186,15 +193,9 @@ async function fetchHotelDetailsWithSession(hotelId, sessionId, userSession, sea
     const data = await response.json();
     console.log(`📊 Hotel info response for ${hotelId}:`, JSON.stringify(data, null, 2));
     
-    // Extract booking data from response
-    const bookingData = extractBookingDataFromResponse(data, sessionId, searchParams);
-    
     return {
       success: true,
-      bookingData: bookingData,
-      rates: data.rates || [],
-      roomTypes: data.room_types || [],
-      bookingLinks: bookingData.bookingLinks || []
+      data: data
     };
     
   } catch (error) {
@@ -214,11 +215,9 @@ async function fetchHotelPageData(hotelId, userSession, searchParams) {
     const { checkin, checkout, guests, residency } = searchParams;
     
     // Construct hotel page URL similar to the one you provided
-    // Format: /hotel/country/city/hotelId/name/?q=dest&dates=checkin-checkout&guests=X&residency=X
     const dateRange = `${formatDateForUrl(checkin)}-${formatDateForUrl(checkout)}`;
     const guestCount = Array.isArray(guests) ? guests.reduce((sum, room) => sum + room.adults, 0) : guests;
     
-    // We need to construct the proper hotel page URL
     const hotelPageUrl = `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel?hotel_id=${hotelId}&dates=${dateRange}&guests=${guestCount}&residency=${residency}`;
     
     console.log(`📡 Fetching hotel page: ${hotelPageUrl}`);
@@ -246,15 +245,9 @@ async function fetchHotelPageData(hotelId, userSession, searchParams) {
     const data = await response.json();
     console.log(`📊 Hotel page response for ${hotelId}:`, JSON.stringify(data, null, 2));
     
-    // Extract booking data from response
-    const bookingData = extractBookingDataFromResponse(data, null, searchParams);
-    
     return {
       success: true,
-      bookingData: bookingData,
-      rates: data.rates || [],
-      roomTypes: data.room_types || [],
-      bookingLinks: bookingData.bookingLinks || []
+      data: data
     };
     
   } catch (error) {
@@ -267,166 +260,196 @@ async function fetchHotelPageData(hotelId, userSession, searchParams) {
 }
 
 /**
- * Extract booking data and links from API response
+ * Enhanced extraction of room groups and rates from RateHawk hotel details
  */
-function extractBookingDataFromResponse(data, sessionId, searchParams) {
-  const bookingData = {
-    bookingLinks: [],
+function extractEnhancedHotelData(hotelData, userSession, searchParams) {
+  console.log('🔍 Enhanced extraction of hotel data...');
+  console.log('📊 Raw hotel data keys:', Object.keys(hotelData));
+  
+  const extractedData = {
+    success: true,
     rates: [],
-    roomOptions: []
+    roomTypes: [],
+    room_groups: [],
+    bookingOptions: [],
+    rawData: hotelData
   };
   
   try {
-    // Look for rates data in various possible locations
-    const rates = data.rates || data.data?.rates || data.hotel?.rates || [];
+    // Look for room groups in various locations
+    let roomGroups = hotelData.room_groups || 
+                    hotelData.data?.room_groups || 
+                    hotelData.hotel?.room_groups || 
+                    [];
     
-    rates.forEach((rate, rateIndex) => {
-      // Extract rate information
-      const rateInfo = {
-        id: rate.id || `rate_${rateIndex}`,
-        roomName: rate.room_name || rate.name || `Room ${rateIndex + 1}`,
-        price: extractPriceFromRate(rate),
-        currency: rate.currency || searchParams.currency || 'USD',
-        cancellation: rate.cancellation_policy || 'Unknown',
-        breakfast: rate.meal_type || rate.breakfast || 'Not specified',
-        bedding: rate.bedding || 'Standard',
-        occupancy: rate.occupancy || `${searchParams.guests} guests`,
-        bookingLink: null
-      };
-      
-      // Try to extract booking link
-      if (rate.booking_url) {
-        rateInfo.bookingLink = rate.booking_url;
-      } else if (rate.reserve_url) {
-        rateInfo.bookingLink = rate.reserve_url;
-      } else if (rate.order_url) {
-        rateInfo.bookingLink = rate.order_url;
-      } else if (rate.rate_key || rate.rate_id) {
-        // Construct booking URL from rate key/ID
-        rateInfo.bookingLink = constructBookingUrl(rate, sessionId, searchParams);
-      }
-      
-      bookingData.rates.push(rateInfo);
-      
-      if (rateInfo.bookingLink) {
-        bookingData.bookingLinks.push({
-          roomName: rateInfo.roomName,
-          price: rateInfo.price,
-          currency: rateInfo.currency,
-          bookingUrl: rateInfo.bookingLink,
-          rateId: rateInfo.id
-        });
-      }
-    });
+    // Look for rates in various locations  
+    let rates = hotelData.rates || 
+               hotelData.data?.rates || 
+               hotelData.hotel?.rates || 
+               [];
     
-    console.log(`📋 Extracted ${bookingData.rates.length} rates with ${bookingData.bookingLinks.length} booking links`);
+    console.log(`📊 Found ${roomGroups.length} room groups and ${rates.length} rates`);
     
-  } catch (error) {
-    console.error('💥 Error extracting booking data:', error);
-  }
-  
-  return bookingData;
-}
-
-/**
- * Construct booking URL from rate data
- */
-function constructBookingUrl(rate, sessionId, searchParams) {
-  try {
-    // Pattern: /orders/reserve/h-{rate_key}/?price=one&residency={residency}&sid={sessionId}
-    const rateKey = rate.rate_key || rate.rate_id || rate.id;
-    const residency = searchParams.residency || 'en-us';
-    
-    if (!rateKey) {
-      return null;
+    // If no room groups found, try to extract from rates
+    if (roomGroups.length === 0 && rates.length > 0) {
+      console.log('🔄 No room_groups found, extracting from rates...');
+      roomGroups = extractRoomGroupsFromRates(rates);
     }
     
-    let bookingUrl = `/orders/reserve/h-${rateKey}/?price=one&residency=${residency}`;
-    
-    if (sessionId) {
-      bookingUrl += `&sid=${sessionId}`;
+    // Process room groups
+    if (roomGroups.length > 0) {
+      extractedData.room_groups = roomGroups.map((rg, index) => ({
+        rg_hash: rg.rg_hash || rg.hash || `rg_${index}`,
+        name_struct: {
+          main_name: rg.name_struct?.main_name || rg.name || rg.room_name || `Room Type ${index + 1}`,
+          bedding_type: rg.name_struct?.bedding_type || rg.bedding_type || ''
+        },
+        room_group_id: rg.room_group_id || rg.id || index
+      }));
+      
+      console.log(`✅ Processed ${extractedData.room_groups.length} room groups`);
     }
     
-    console.log(`🔗 Constructed booking URL: ${bookingUrl}`);
-    return bookingUrl;
-    
-  } catch (error) {
-    console.error('💥 Error constructing booking URL:', error);
-    return null;
-  }
-}
-
-/**
- * Extract price from rate object
- */
-function extractPriceFromRate(rate) {
-  if (rate.payment_options?.payment_types?.[0]) {
-    const paymentType = rate.payment_options.payment_types[0];
-    return parseFloat(paymentType.show_amount || paymentType.amount || 0);
-  }
-  
-  return parseFloat(rate.total_price || rate.price || rate.amount || rate.daily_prices || 0);
-}
-
-/**
- * Format date for URL (DD.MM.YYYY format)
- */
-function formatDateForUrl(dateString) {
-  const date = new Date(dateString);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}.${month}.${year}`;
-}
-
-/**
- * Enhanced hotel search that includes booking functionality
- */
-async function searchHotelsWithBooking(searchParams) {
-  console.log('🏨 === ENHANCED HOTEL SEARCH WITH BOOKING ===');
-  
-  try {
-    // Get hotels with booking links
-    const results = await searchHotelsWithBookingLinks(searchParams);
-    
-    if (!results.success) {
-      return results;
+    // Process rates with enhanced structure
+    if (rates.length > 0) {
+      extractedData.rates = rates.map((rate, index) => {
+        // Extract pricing information
+        let price = 0;
+        let currency = searchParams.currency || 'USD';
+        
+        if (rate.payment_options?.payment_types?.length > 0) {
+          const paymentType = rate.payment_options.payment_types[0];
+          price = parseFloat(paymentType.show_amount || paymentType.amount || '0');
+          currency = paymentType.show_currency_code || paymentType.currency_code || currency;
+        } else {
+          price = parseFloat(rate.daily_prices || rate.price || rate.total_price || '0');
+          currency = rate.currency || currency;
+        }
+        
+        // Create enhanced rate object
+        const enhancedRate = {
+          id: rate.id || rate.rate_id || `rate_${index}`,
+          rg_hash: rate.rg_hash || '',
+          room_name: rate.room_name || rate.name || `Room ${index + 1}`,
+          payment_options: rate.payment_options || {
+            payment_types: [{
+              show_amount: price.toString(),
+              amount: price.toString(),
+              show_currency_code: currency,
+              currency_code: currency,
+              type: rate.payment_type || 'pay_now'
+            }]
+          },
+          daily_prices: rate.daily_prices || price.toString(),
+          price: rate.price || price.toString(),
+          currency: currency,
+          cancellation_policy: rate.cancellation_policy || {
+            type: rate.cancellation || 'free_cancellation'
+          },
+          meal_type: rate.meal_type || rate.breakfast || 'room_only',
+          amenities: rate.amenities || [],
+          room_amenities: rate.room_amenities || [],
+          rooms: rate.rooms || [{
+            amenities_data: rate.room_amenities || [],
+            size: rate.room_size || 'standard'
+          }],
+          bedding: rate.bedding || '',
+          occupancy: rate.occupancy || '',
+          // Keep original rate data
+          _original: rate
+        };
+        
+        return enhancedRate;
+      });
+      
+      console.log(`✅ Processed ${extractedData.rates.length} rates`);
     }
     
-    // Transform hotels to include booking functionality
-    const enhancedHotels = results.hotels.map(hotel => ({
-      ...hotel,
-      // Add easy booking methods
-      bookNow: (rateId) => createBookingHandler(hotel, rateId),
-      getBookingUrl: (rateId) => getHotelBookingUrl(hotel, rateId),
-      hasBookingAvailable: hotel.hasBookingData && hotel.bookingLinks?.length > 0,
-      availableRates: hotel.detailedRates || [],
-      bookingOptions: hotel.bookingLinks || []
+    // Create booking options from rates
+    extractedData.bookingOptions = createBookingOptionsFromRates(extractedData.rates, userSession, searchParams);
+    
+    console.log(`💰 Created ${extractedData.bookingOptions.length} booking options`);
+    
+    // Legacy format for backwards compatibility
+    extractedData.roomTypes = extractedData.room_groups.map(rg => ({
+      id: rg.room_group_id,
+      name: rg.name_struct.main_name,
+      bedding: rg.name_struct.bedding_type
     }));
     
-    console.log(`✅ Enhanced search complete: ${enhancedHotels.length} hotels with booking data`);
-    console.log(`🔗 Hotels with booking links: ${enhancedHotels.filter(h => h.hasBookingAvailable).length}`);
-    
-    return {
-      ...results,
-      hotels: enhancedHotels,
-      metadata: {
-        ...results.metadata,
-        bookingEnabled: true,
-        hotelsWithBooking: enhancedHotels.filter(h => h.hasBookingAvailable).length
-      }
-    };
+    return extractedData;
     
   } catch (error) {
-    console.error('💥 Enhanced hotel search failed:', error);
+    console.error('💥 Error in enhanced data extraction:', error);
     return {
       success: false,
-      error: `Enhanced search failed: ${error.message}`,
-      hotels: [],
-      totalHotels: 0,
-      availableHotels: 0
+      error: error.message,
+      rates: [],
+      roomTypes: [],
+      room_groups: [],
+      bookingOptions: []
     };
   }
+}
+
+/**
+ * Extract room groups from rates when room_groups is not available
+ */
+function extractRoomGroupsFromRates(rates) {
+  const roomGroupMap = new Map();
+  
+  rates.forEach((rate, index) => {
+    const rgHash = rate.rg_hash || `rg_${index}`;
+    const roomName = rate.room_name || rate.name || `Room Type ${index + 1}`;
+    
+    if (!roomGroupMap.has(rgHash)) {
+      roomGroupMap.set(rgHash, {
+        rg_hash: rgHash,
+        name_struct: {
+          main_name: roomName,
+          bedding_type: rate.bedding || ''
+        },
+        room_group_id: rate.room_group_id || index
+      });
+    }
+  });
+  
+  return Array.from(roomGroupMap.values());
+}
+
+/**
+ * Create booking options from processed rates
+ */
+function createBookingOptionsFromRates(rates, userSession, searchParams) {
+  const bookingOptions = [];
+  
+  rates.forEach((rate, index) => {
+    const price = parseFloat(rate.payment_options?.payment_types?.[0]?.show_amount || rate.price || '0');
+    const currency = rate.payment_options?.payment_types?.[0]?.show_currency_code || rate.currency || 'USD';
+    
+    if (rate.id || rate.rg_hash) {
+      const sessionId = userSession.ratehawkSessionId || userSession.sessionId;
+      const rateKey = rate.id || rate.rg_hash;
+      const residency = searchParams.residency || 'en-us';
+      
+      const bookingUrl = `/orders/reserve/h-${rateKey}/?price=one&residency=${residency}&sid=${sessionId}`;
+      
+      bookingOptions.push({
+        rateIndex: index,
+        rateId: rate.id,
+        rateKey: rateKey,
+        roomName: rate.room_name,
+        price: price,
+        currency: currency,
+        bookingUrl: bookingUrl,
+        fullBookingUrl: `https://www.ratehawk.com${bookingUrl}`,
+        cancellationPolicy: rate.cancellation_policy?.type || 'check_policy',
+        mealPlan: rate.meal_type || 'room_only'
+      });
+    }
+  });
+  
+  return bookingOptions;
 }
 
 /**
@@ -463,6 +486,17 @@ function getHotelBookingUrl(hotel, rateId) {
   return hotel.bookingLinks[0]?.bookingUrl || null;
 }
 
+/**
+ * Format date for URL (DD.MM.YYYY format)
+ */
+function formatDateForUrl(dateString) {
+  const date = new Date(dateString);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
 // Helper functions (reuse from your existing code)
 function formatCookiesForRequest(cookies) {
   if (!Array.isArray(cookies)) return '';
@@ -481,8 +515,8 @@ function extractCSRFToken(cookies) {
 
 // Export the main function
 module.exports = {
-  searchHotelsWithBooking,
   searchHotelsWithBookingLinks,
   fetchSingleHotelBookingData,
+  extractEnhancedHotelData,
   getHotelBookingUrl
 };

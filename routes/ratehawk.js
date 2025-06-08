@@ -265,6 +265,124 @@ router.post('/search', async (req, res) => {
   }
 });
 
+// Hotel details endpoint - NEW
+router.post('/hotel-details', async (req, res) => {
+  const startTime = Date.now();
+  const { userId, hotelId, searchSessionId, searchParams } = req.body;
+  
+  console.log('🏨 === HOTEL DETAILS REQUEST ===');
+  console.log(`👤 User ID: ${userId}`);
+  console.log(`🏨 Hotel ID: ${hotelId}`);
+  console.log(`🔗 Search Session ID: ${searchSessionId}`);
+  console.log(`📋 Search Params:`, searchParams);
+  
+  // Validation
+  if (!userId || !hotelId) {
+    console.log('❌ Missing required parameters');
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields: userId, hotelId',
+      hotelDetails: null
+    });
+  }
+
+  try {
+    // Get user session
+    const userSession = global.userSessions.get(userId);
+    if (!userSession) {
+      console.log('❌ No session found for user:', userId);
+      return res.status(401).json({
+        success: false,
+        error: 'No RateHawk session found. Please login first.',
+        hotelDetails: null
+      });
+    }
+
+    // Validate session
+    if (!validateSession(userSession)) {
+      console.log('❌ Invalid/expired session for user:', userId);
+      global.userSessions.delete(userId);
+      return res.status(401).json({
+        success: false,
+        error: 'RateHawk session expired. Please login again.',
+        hotelDetails: null
+      });
+    }
+
+    // Update last used timestamp
+    userSession.lastUsed = new Date();
+    global.userSessions.set(userId, userSession);
+
+    console.log(`✅ Using valid session for hotel details fetch`);
+
+    // Import the hotel details fetching function
+    const { fetchSingleHotelBookingData } = require('../services/enhancedRatehawkService');
+
+    // Create mock hotel object with basic info
+    const basicHotel = {
+      id: hotelId,
+      name: `Hotel ${hotelId}`,
+      ratehawk_data: {
+        ota_hotel_id: hotelId,
+        requested_hotel_id: hotelId
+      }
+    };
+
+    // Fetch detailed hotel data
+    const detailsResult = await fetchSingleHotelBookingData(
+      basicHotel,
+      searchSessionId,
+      userSession,
+      searchParams || {}
+    );
+
+    const duration = Date.now() - startTime;
+    console.log(`⏱️ Hotel details fetch completed in ${duration}ms`);
+
+    if (detailsResult.success) {
+      console.log(`✅ Hotel details fetched successfully`);
+      console.log(`🏨 Room types found: ${detailsResult.roomTypes?.length || 0}`);
+      console.log(`💰 Rates found: ${detailsResult.rates?.length || 0}`);
+      
+      res.json({
+        success: true,
+        hotelDetails: {
+          hotelId: hotelId,
+          rates: detailsResult.rates || [],
+          roomTypes: detailsResult.roomTypes || [],
+          bookingOptions: detailsResult.bookingOptions || [],
+          room_groups: detailsResult.room_groups || [],
+          detailedData: detailsResult.data || null
+        },
+        fetchDuration: `${duration}ms`,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.log(`❌ Hotel details fetch failed: ${detailsResult.error}`);
+      
+      res.status(500).json({
+        success: false,
+        error: detailsResult.error || 'Failed to fetch hotel details',
+        hotelDetails: null,
+        fetchDuration: `${duration}ms`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('💥 Hotel details error:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: `Hotel details fetch failed: ${error.message}`,
+      hotelDetails: null,
+      fetchDuration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Get RateHawk statistics
 router.get('/stats', async (req, res) => {
   try {
