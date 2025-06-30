@@ -372,6 +372,11 @@ router.post('/hotel-details', async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error('💥 Hotel details error:', error);
+
+    console.log('Raw RateHawk API response ========:', JSON.stringify(detailsResult, null, 2));
+    console.log('Extracted room_groups ============:', detailsResult.room_groups?.length || 0);
+    console.log('Extracted rates   ================:', detailsResult.rates?.length || 0);
+
     
     res.status(500).json({
       success: false,

@@ -5,7 +5,9 @@
 
 /**
  * Main search function that gets hotels WITH booking links
+ * NOTE: This function is commented out - using enhanced version at bottom of file
  */
+/*
 async function searchHotels({ userSession, destination, checkin, checkout, guests, residency = 'en-us', currency = 'USD', page = 1, filters = {} }) {
   console.log('🔍 === ENHANCED RATEHAWK SEARCH WITH BOOKING LINKS ===');
   
@@ -63,6 +65,7 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
     };
   }
 }
+*/
 
 /**
  * Fetch booking data for all hotels
@@ -97,6 +100,13 @@ async function fetchHotelBookingData(hotels, searchSessionId, userSession, searc
           detailedRates: bookingData.rates || [],
           roomTypes: bookingData.roomTypes || [],
           bookingOptions: bookingData.bookingOptions || [],
+          // Add room_groups and rates for frontend compatibility
+          ratehawk_data: {
+            ...originalHotel.ratehawk_data,
+            room_groups: bookingData.room_groups || originalHotel.ratehawk_data?.static_vm?.room_groups || [],
+            rates: bookingData.rates || [],
+            enhancedData: bookingData.enhancedData || {}
+          },
           // Add convenience methods
           getBookingUrl: (rateIndex = 0) => getBookingUrlForRate(bookingData.bookingOptions, rateIndex, userSession),
           bookNow: (rateIndex = 0) => openBookingUrl(bookingData.bookingOptions, rateIndex, userSession)
@@ -110,7 +120,13 @@ async function fetchHotelBookingData(hotels, searchSessionId, userSession, searc
           bookingError: result.status === 'rejected' ? result.reason?.message : result.value?.error,
           detailedRates: [],
           roomTypes: [],
-          bookingOptions: []
+          bookingOptions: [],
+          ratehawk_data: {
+            ...originalHotel.ratehawk_data,
+            room_groups: originalHotel.ratehawk_data?.static_vm?.room_groups || [],
+            rates: [],
+            enhancedData: {}
+          }
         });
       }
     });
@@ -195,6 +211,25 @@ async function fetchHotelDetails(hotelId, searchSessionId, userSession) {
     }
     
     const data = await response.json();
+    
+    // Step 1: Log full API response from RateHawk
+    console.log('🔍 Raw RateHawk API response:', JSON.stringify(data, null, 2));
+    
+    // Step 2: Check if room_groups or rates are missing or empty
+    console.log('🔍 Extracted room_groups count:', data.room_groups?.length || 0);
+    console.log('🔍 Extracted rates count:', data.rates?.length || 0);
+    
+    // Step 3: Log the structure of the data
+    console.log('🔍 Data structure analysis:', {
+      hasRoomGroups: !!data.room_groups,
+      hasRates: !!data.rates,
+      hasData: !!data.data,
+      hasHotel: !!data.hotel,
+      topLevelKeys: Object.keys(data),
+      dataKeys: data.data ? Object.keys(data.data) : [],
+      hotelKeys: data.hotel ? Object.keys(data.hotel) : []
+    });
+    
     return {
       success: true,
       data: data
@@ -264,23 +299,36 @@ function extractBookingDataFromHotelDetails(hotelData, userSession, searchParams
     success: true,
     rates: [],
     roomTypes: [],
-    bookingOptions: []
+    bookingOptions: [],
+    room_groups: [], // Add room_groups for frontend compatibility
+    enhancedData: {} // Store the full enhanced data structure
   };
   
   try {
-    // Look for rates in various locations
+    // Extract room_groups and rates from various possible locations
+    const roomGroups = hotelData.room_groups || hotelData.data?.room_groups || hotelData.hotel?.room_groups || [];
     const rates = hotelData.rates || hotelData.data?.rates || hotelData.hotel?.rates || [];
+    
+    console.log(`🔍 Found ${roomGroups.length} room groups and ${rates.length} rates`);
+    
+    // Store room_groups for frontend
+    bookingData.room_groups = roomGroups;
     
     if (rates.length === 0) {
       console.log('⚠️ No rates found in hotel details');
       return {
         success: false,
-        error: 'No rates found in hotel details'
+        error: 'No rates found in hotel details',
+        room_groups: roomGroups,
+        rates: [],
+        roomTypes: [],
+        bookingOptions: []
       };
     }
     
     console.log(`💰 Found ${rates.length} rates, extracting booking data...`);
     
+    // Process rates and create booking options
     rates.forEach((rate, rateIndex) => {
       try {
         // Extract rate information
@@ -294,7 +342,11 @@ function extractBookingDataFromHotelDetails(hotelData, userSession, searchParams
           bedding: rate.bedding || 'Standard bedding',
           occupancy: rate.occupancy || 'Standard occupancy',
           rateKey: rate.rate_key || rate.rate_id || rate.id,
-          paymentInfo: rate.payment_options || {}
+          paymentInfo: rate.payment_options || {},
+          rg_hash: rate.rg_hash, // Include rg_hash for frontend matching
+          rooms: rate.rooms || [], // Include room details
+          amenities: rate.amenities || [],
+          room_amenities: rate.room_amenities || []
         };
         
         bookingData.rates.push(rateInfo);
@@ -314,7 +366,8 @@ function extractBookingDataFromHotelDetails(hotelData, userSession, searchParams
             bookingUrl: bookingUrl,
             fullBookingUrl: `https://www.ratehawk.com${bookingUrl}`,
             cancellationPolicy: rateInfo.cancellationPolicy,
-            mealPlan: rateInfo.mealPlan
+            mealPlan: rateInfo.mealPlan,
+            rg_hash: rateInfo.rg_hash
           });
           
           console.log(`🔗 Created booking URL: ${bookingUrl}`);
@@ -325,13 +378,43 @@ function extractBookingDataFromHotelDetails(hotelData, userSession, searchParams
       }
     });
     
+    // Create enhanced data structure for frontend
+    bookingData.enhancedData = {
+      room_groups: roomGroups,
+      rates: rates, // Include the original rates data
+      processed_rates: bookingData.rates,
+      booking_options: bookingData.bookingOptions,
+      metadata: {
+        total_room_groups: roomGroups.length,
+        total_rates: rates.length,
+        processed_rates: bookingData.rates.length,
+        booking_options: bookingData.bookingOptions.length,
+        extraction_success: true
+      }
+    };
+    
     console.log(`✅ Extracted ${bookingData.bookingOptions.length} booking options`);
+    console.log(`✅ Enhanced data structure created with ${roomGroups.length} room groups and ${rates.length} rates`);
     
   } catch (error) {
     console.error('💥 Error extracting booking data:', error);
     return {
       success: false,
-      error: error.message
+      error: error.message,
+      room_groups: [],
+      rates: [],
+      roomTypes: [],
+      bookingOptions: [],
+      enhancedData: {
+        room_groups: [],
+        rates: [],
+        processed_rates: [],
+        booking_options: [],
+        metadata: {
+          extraction_success: false,
+          error: error.message
+        }
+      }
     };
   }
   
@@ -409,7 +492,7 @@ const {
  * Main hotel search function with real RateHawk API integration
  */
 async function searchHotels({ userSession, destination, checkin, checkout, guests, residency = 'en-us', currency = 'USD', page = 1, filters = {} }) {
-  console.log('🔍 === STARTING RATEHAWK HOTEL SEARCH ===');
+  console.log('🔍 === STARTING ENHANCED RATEHAWK HOTEL SEARCH ===');
   console.log('📋 Search parameters:', JSON.stringify({
     destination,
     checkin,
@@ -437,36 +520,54 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
     
     console.log(`✅ User session valid: ${userSession.cookies?.length || 0} cookies`);
     
-    // Use the performBasicSearch from helpers
-    const searchResult = await performBasicSearch({
-      userSession,
-      destination,
-      checkin,
-      checkout,
-      guests,
-      residency,
-      currency,
-      page,
-      filters
+    // Step 1: Perform basic search to get hotel list and session
+    const basicSearch = await performBasicSearch({
+      userSession, destination, checkin, checkout, guests, residency, currency, page, filters
     });
     
+    if (!basicSearch.success) {
+      return basicSearch;
+    }
+    
+    console.log(`✅ Basic search completed: ${basicSearch.hotels.length} hotels found`);
+    console.log(`🔗 Search session: ${basicSearch.searchSessionId}`);
+    
+    // Step 2: Fetch detailed rates and booking data for each hotel
+    const hotelsWithBookingData = await fetchHotelBookingData(
+      basicSearch.hotels,
+      basicSearch.searchSessionId,
+      userSession,
+      { checkin, checkout, guests, residency, currency }
+    );
+    
     const duration = Date.now() - startTime;
-    console.log(`✅ Search completed in ${duration}ms`);
-    console.log(`🏨 Final results: ${searchResult.hotels?.length || 0} hotels`);
+    console.log(`🎯 Enhanced search completed in ${duration}ms`);
+    console.log(`💰 Hotels with booking data: ${hotelsWithBookingData.filter(h => h.hasBookingData).length}/${hotelsWithBookingData.length}`);
     
     return {
-      ...searchResult,
+      success: true,
+      hotels: hotelsWithBookingData,
+      totalHotels: basicSearch.totalHotels,
+      availableHotels: basicSearch.availableHotels,
+      searchSessionId: basicSearch.searchSessionId,
       searchDuration: `${duration}ms`,
+      hasMorePages: basicSearch.hasMorePages,
+      currentPage: page,
+      metadata: {
+        strategy: 'enhanced_with_booking_data',
+        hotelsWithBookingData: hotelsWithBookingData.filter(h => h.hasBookingData).length,
+        searchAndDetailsCompleted: true
+      },
       timestamp: new Date().toISOString()
     };
     
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('💥 Hotel search failed:', error);
+    console.error('💥 Enhanced hotel search failed:', error);
     
     return {
       success: false,
-      error: `Search failed: ${error.message}`,
+      error: `Enhanced search failed: ${error.message}`,
       hotels: [],
       totalHotels: 0,
       availableHotels: 0,
@@ -481,8 +582,8 @@ async function searchHotels({ userSession, destination, checkin, checkout, guest
     };
   } finally {
     const duration = Date.now() - startTime;
-    console.log(`🏁 Search service completed in ${duration}ms`);
-    console.log('=== END RATEHAWK HOTEL SEARCH ===');
+    console.log(`🏁 Enhanced search service completed in ${duration}ms`);
+    console.log('=== END ENHANCED RATEHAWK HOTEL SEARCH ===');
   }
 }
 

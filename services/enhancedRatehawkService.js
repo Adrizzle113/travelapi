@@ -145,6 +145,13 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
     if (pageResponse.success) {
       return extractEnhancedHotelData(pageResponse.data, userSession, searchParams);
     }
+
+    console.log("Inside extractEnhancedHotelData");
+    console.log("room_groups found ==========:", pageResponse.data.room_groups?.length || 0);
+    console.log("rates found ==========:", pageResponse.data.rates?.length || 0);
+    console.log("Sample room group ==========:", JSON.stringify(pageResponse.data.room_groups?.[0], null, 2));
+    console.log("Sample rate ==========:", JSON.stringify(pageResponse.data.rates?.[0], null, 2));
+
     
     return {
       success: false,
