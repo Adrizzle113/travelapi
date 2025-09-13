@@ -1,0 +1,218 @@
+{
+    "info": {
+        "name": "Travel API",
+        "description": "API collection for Travel Booking API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Health Check",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/health",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "health"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Create User",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"phone_number\": \"+1234567890\",\n  \"agency_name\": \"Travel Agency Inc\",\n  \"legal_name\": \"Travel Agency Inc LLC\",\n  \"city\": \"New York\",\n  \"address\": \"123 Main Street, New York, NY 10001\",\n  \"actual_address_matches\": true,\n  \"itn\": \"123456789\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/user/users",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "user",
+                        "users"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Get All Users",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/user/users",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "user",
+                        "users"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Create User with Logo",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                    "mode": "formdata",
+                    "formdata": [
+                        {
+                            "key": "email",
+                            "value": "jane.smith@example.com",
+                            "type": "text"
+                        },
+                        {
+                            "key": "first_name",
+                            "value": "Jane",
+                            "type": "text"
+                        },
+                        {
+                            "key": "last_name",
+                            "value": "Smith",
+                            "type": "text"
+                        },
+                        {
+                            "key": "agency_name",
+                            "value": "Global Travel",
+                            "type": "text"
+                        },
+                        {
+                            "key": "city",
+                            "value": "London",
+                            "type": "text"
+                        },
+                        {
+                            "key": "logo",
+                            "type": "file",
+                            "src": [],
+                            "description": "Upload an image file (JPEG, PNG, GIF, WebP, or SVG). Max size: 5MB"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/user/users",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "user",
+                        "users"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Create User with Logo (JSON)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"email\": \"test.logo@example.com\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"User\",\n  \"agency_name\": \"Test Agency\",\n  \"city\": \"New York\",\n  \"logo_url\": \"https://example.com/logo.png\"\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/user/users",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "user",
+                        "users"
+                    ]
+                },
+                "description": "Create user with pre-existing logo URL (no file upload)"
+            }
+        },
+        {
+            "name": "RateHawk Login",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"email\": \"your-ratehawk-email@example.com\",\n  \"password\": \"your-ratehawk-password\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/ratehawk/login",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "ratehawk",
+                        "login"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Search Hotels",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"userId\": \"test_user_123\",\n  \"destination\": \"New York\",\n  \"checkin\": \"2025-08-01\",\n  \"checkout\": \"2025-08-03\",\n  \"guests\": [{\n    \"adults\": 2\n  }],\n  \"residency\": \"en-us\",\n  \"currency\": \"USD\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/ratehawk/search",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "ratehawk",
+                        "search"
+                    ]
+                }
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:3001"
+        }
+    ]
+}
