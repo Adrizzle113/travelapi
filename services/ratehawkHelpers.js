@@ -675,7 +675,7 @@ function mapAmenities(amenities) {
   return mapped;
 }
 
-module.exports = {
+export {
   performBasicSearch,
   formatGuestsForRateHawk,
   getDestinationInfo,

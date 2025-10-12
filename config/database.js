@@ -1,18 +1,18 @@
-const sqlite3 = require('sqlite3').verbose();
+import sqlite3 from 'sqlite3';
 
 let db;
 
 const initializeDatabase = () => {
   return new Promise((resolve, reject) => {
     console.log('🗄️ Initializing SQLite database...');
-    
-    db = new sqlite3.Database('users.db', (err) => {
+    const sqlite = sqlite3.verbose();
+    db = new sqlite.Database('users.db', (err) => {
       if (err) {
         console.error('❌ Error opening database:', err.message);
         reject(err);
       } else {
         console.log('✅ Connected to SQLite database');
-        
+
         // Create users table if it doesn't exist
         db.run(`
           CREATE TABLE IF NOT EXISTS users (
@@ -30,7 +30,7 @@ const initializeDatabase = () => {
             reject(err);
           } else {
             console.log('✅ Users table ready');
-            
+
             // Create auth logs table for debugging
             db.run(`
               CREATE TABLE IF NOT EXISTS auth_logs (
@@ -72,7 +72,7 @@ const logAuthAttempt = (userId, email, result, duration) => {
   return new Promise((resolve, reject) => {
     const db = getDatabase();
     const timestamp = new Date().toISOString();
-    
+
     const logEntry = {
       timestamp,
       userId,
@@ -83,9 +83,9 @@ const logAuthAttempt = (userId, email, result, duration) => {
       sessionId: result.sessionId || null,
       finalUrl: result.loginUrl || result.finalUrl || null
     };
-    
+
     console.log('📋 AUTH LOG:', JSON.stringify(logEntry, null, 2));
-    
+
     db.run(`
       INSERT INTO auth_logs (user_id, email, success, error_message, duration, session_id, final_url)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -97,7 +97,7 @@ const logAuthAttempt = (userId, email, result, duration) => {
       logEntry.duration,
       logEntry.sessionId,
       logEntry.finalUrl
-    ], function(err) {
+    ], function (err) {
       if (err) {
         console.error('❌ Error logging auth attempt:', err.message);
         reject(err);
@@ -112,7 +112,7 @@ const logAuthAttempt = (userId, email, result, duration) => {
 const getAuthStats = () => {
   return new Promise((resolve, reject) => {
     const db = getDatabase();
-    
+
     db.all(`
       SELECT 
         COUNT(*) as total_attempts,
@@ -131,9 +131,9 @@ const getAuthStats = () => {
   });
 };
 
-module.exports = { 
-  initializeDatabase, 
-  getDatabase, 
-  logAuthAttempt, 
-  getAuthStats 
+export {
+  initializeDatabase,
+  getDatabase,
+  logAuthAttempt,
+  getAuthStats
 };

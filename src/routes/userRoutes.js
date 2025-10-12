@@ -1,12 +1,12 @@
-const express = require("express");
-const multer = require("multer");
-const {
+import express from "express";
+import multer from "multer";
+import {
   createUser,
   fetchUsers,
   emailVerification,
   getUserStatus,
   approveUser,
-} = require("../controllers/userController.js");
+} from "../controllers/userController.js";
 
 // Configure multer for file uploads - simplified version
 const upload = multer({
@@ -47,4 +47,4 @@ userRoutes.post("/email-verification", emailVerification);
 userRoutes.get("/status/:email", getUserStatus);
 userRoutes.put("/approve/:email", approveUser);
 
-module.exports = userRoutes;
+export default userRoutes;

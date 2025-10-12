@@ -1,0 +1,532 @@
+{
+    "message": "✅ Booking form created successfully",
+    "data": {
+        "hotelDetails": {
+            "book_hash": "h-84b7116a-44c2-52eb-8bb9-e06d44e55f62",
+            "match_hash": "m-ababaff8-e1a3-51f5-96bf-b9bff54ecbb8",
+            "daily_prices": [
+                "3.00"
+            ],
+            "meal": "nomeal",
+            "meal_data": {
+                "value": "nomeal",
+                "has_breakfast": false,
+                "no_child_meal": true
+            },
+            "payment_options": {
+                "payment_types": [
+                    {
+                        "amount": "3.00",
+                        "show_amount": "3.00",
+                        "currency_code": "USD",
+                        "show_currency_code": "EUR",
+                        "by": null,
+                        "is_need_credit_card_data": false,
+                        "is_need_cvc": false,
+                        "type": "deposit",
+                        "vat_data": {
+                            "included": false,
+                            "applied": false,
+                            "amount": "0.00",
+                            "currency_code": "USD",
+                            "value": "0.00"
+                        },
+                        "tax_data": {
+                            "taxes": [
+                                {
+                                    "name": "city_tax",
+                                    "included_by_supplier": false,
+                                    "amount": "784.19",
+                                    "currency_code": "HNL"
+                                },
+                                {
+                                    "name": "electricity_fee",
+                                    "included_by_supplier": true,
+                                    "amount": "0.09",
+                                    "currency_code": "EUR"
+                                },
+                                {
+                                    "name": "service_fee",
+                                    "included_by_supplier": false,
+                                    "amount": "15.23",
+                                    "currency_code": "HNL"
+                                },
+                                {
+                                    "name": "vat",
+                                    "included_by_supplier": false,
+                                    "amount": "353.76",
+                                    "currency_code": "HNL"
+                                }
+                            ]
+                        },
+                        "perks": {},
+                        "commission_info": {
+                            "show": {
+                                "amount_gross": "3.00",
+                                "amount_net": "3.00",
+                                "amount_commission": "0.00"
+                            },
+                            "charge": {
+                                "amount_gross": "3.00",
+                                "amount_net": "3.00",
+                                "amount_commission": "0.00"
+                            }
+                        },
+                        "cancellation_penalties": {
+                            "policies": [
+                                {
+                                    "start_at": null,
+                                    "end_at": "2025-10-05T20:00:00",
+                                    "amount_charge": "0.00",
+                                    "amount_show": "0.00",
+                                    "commission_info": {
+                                        "show": {
+                                            "amount_gross": "0.00",
+                                            "amount_net": "0.00",
+                                            "amount_commission": "0.00"
+                                        },
+                                        "charge": {
+                                            "amount_gross": "0.00",
+                                            "amount_net": "0.00",
+                                            "amount_commission": "0.00"
+                                        }
+                                    }
+                                },
+                                {
+                                    "start_at": "2025-10-05T20:00:00",
+                                    "end_at": null,
+                                    "amount_charge": "3.00",
+                                    "amount_show": "3.00",
+                                    "commission_info": {
+                                        "show": {
+                                            "amount_gross": "3.00",
+                                            "amount_net": "3.00",
+                                            "amount_commission": "0.00"
+                                        },
+                                        "charge": {
+                                            "amount_gross": "3.00",
+                                            "amount_net": "3.00",
+                                            "amount_commission": "0.00"
+                                        }
+                                    }
+                                }
+                            ],
+                            "free_cancellation_before": "2025-10-05T20:00:00"
+                        },
+                        "recommended_price": null
+                    }
+                ]
+            },
+            "bar_rate_price_data": null,
+            "rg_ext": {
+                "class": 3,
+                "quality": 2,
+                "sex": 0,
+                "bathroom": 2,
+                "bedding": 3,
+                "family": 0,
+                "capacity": 2,
+                "club": 0,
+                "bedrooms": 0,
+                "balcony": 0,
+                "view": 0,
+                "floor": 0
+            },
+            "room_name": "Standard Double room (full double bed)",
+            "room_name_info": null,
+            "serp_filters": [
+                "has_bathroom",
+                "has_internet"
+            ],
+            "sell_price_limits": null,
+            "allotment": 33,
+            "amenities_data": [
+                "non-smoking"
+            ],
+            "any_residency": true,
+            "deposit": null,
+            "no_show": null,
+            "room_data_trans": {
+                "main_room_type": "Standard Double room",
+                "main_name": "Standard Double room",
+                "bathroom": null,
+                "bedding_type": "full double bed",
+                "misc_room_type": null
+            },
+            "legal_info": null,
+            "is_package": false
+        },
+        "bookingForm": {
+            "data": {
+                "order_id": 59072477,
+                "partner_order_id": "partner-50ddd5a3-0540-477e-bc85-2a9c5409daf7",
+                "item_id": 127414542,
+                "payment_types": [
+                    {
+                        "amount": "3.00",
+                        "currency_code": "USD",
+                        "is_need_credit_card_data": false,
+                        "is_need_cvc": false,
+                        "type": "deposit",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "3.00",
+                        "currency_code": "EUR",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "3.00",
+                        "currency_code": "USD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "2.00",
+                        "currency_code": "OMR",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "3.00",
+                        "currency_code": "GBP",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "21.00",
+                        "currency_code": "CNY",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "256.00",
+                        "currency_code": "INR",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "4040.00",
+                        "currency_code": "KRW",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "3.00",
+                        "currency_code": "CHF",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "425.00",
+                        "currency_code": "JPY",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "11.00",
+                        "currency_code": "AED",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "5.00",
+                        "currency_code": "CAD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "11.00",
+                        "currency_code": "QAR",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "94.00",
+                        "currency_code": "THB",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "75817.00",
+                        "currency_code": "VND",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "23.00",
+                        "currency_code": "HKD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "121.00",
+                        "currency_code": "TRY",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "2.00",
+                        "currency_code": "BHD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "239.00",
+                        "currency_code": "RUB",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "5.00",
+                        "currency_code": "AUD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "3.00",
+                        "currency_code": "JOD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "11.00",
+                        "currency_code": "PLN",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "54.00",
+                        "currency_code": "MXN",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "47884.00",
+                        "currency_code": "IDR",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "167.00",
+                        "currency_code": "PHP",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "19.00",
+                        "currency_code": "DKK",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "29.00",
+                        "currency_code": "NOK",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "27.00",
+                        "currency_code": "SEK",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "11.00",
+                        "currency_code": "SAR",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "1.00",
+                        "currency_code": "KWD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "5.00",
+                        "currency_code": "BGN",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "13.00",
+                        "currency_code": "RON",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "13.00",
+                        "currency_code": "MYR",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "4.00",
+                        "currency_code": "SGD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "51.00",
+                        "currency_code": "ZAR",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "88.00",
+                        "currency_code": "TWD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "119.00",
+                        "currency_code": "UAH",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "138.00",
+                        "currency_code": "EGP",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "10.00",
+                        "currency_code": "ILS",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "5.00",
+                        "currency_code": "NZD",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "949.00",
+                        "currency_code": "HUF",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    },
+                    {
+                        "amount": "60.00",
+                        "currency_code": "CZK",
+                        "is_need_credit_card_data": true,
+                        "is_need_cvc": true,
+                        "type": "now",
+                        "recommended_price": null
+                    }
+                ],
+                "is_gender_specification_required": false,
+                "upsell_data": []
+            },
+            "debug": {
+                "api_endpoint": {
+                    "endpoint": "api/b2b/v3/hotel/order/booking/form",
+                    "is_active": true,
+                    "is_limited": true,
+                    "remaining": 29,
+                    "requests_number": 30,
+                    "reset": "2025-10-05T14:15:00",
+                    "seconds_number": 60
+                },
+                "request": {
+                    "partner_order_id": "partner-50ddd5a3-0540-477e-bc85-2a9c5409daf7",
+                    "book_hash": "h-84b7116a-44c2-52eb-8bb9-e06d44e55f62",
+                    "language": "en",
+                    "user_ip": "::1"
+                },
+                "method": "POST",
+                "real_ip": "119.155.192.183",
+                "request_id": "a8d30b0fc012aa939536292a4c39c10d",
+                "key_id": 11606,
+                "api_key_id": 11606,
+                "utcnow": "2025-10-05T14:14:10.953293"
+            },
+            "status": "ok",
+            "error": null
+        }
+    }
+}
