@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer-core');
+import puppeteer from 'puppeteer-core';
 
 /**
  * RateHawk Login Service
@@ -11,7 +11,7 @@ async function loginUserToRateHawk(email, password, userId) {
   console.log(`🔐 User ID: ${userId}`);
   console.log(`📧 Email: ${email}`);
   console.log(`🕒 Timestamp: ${new Date().toISOString()}`);
-  
+
   let browser;
   try {
     // Connect to NEW Browserless endpoint
@@ -21,17 +21,17 @@ async function loginUserToRateHawk(email, password, userId) {
     });
 
     console.log('🌐 Connected to Browserless browser (new endpoint)');
-    
+
     const page = await browser.newPage();
-    
+
     // Set realistic browser headers
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
+
     // Navigate to RateHawk login
     console.log('📍 Navigating to RateHawk login page...');
-    await page.goto('https://www.ratehawk.com/accounts/login/', { 
+    await page.goto('https://www.ratehawk.com/accounts/login/', {
       waitUntil: 'networkidle0',
-      timeout: 30000 
+      timeout: 30000
     });
 
     console.log('⏳ Waiting for login form...');
@@ -42,13 +42,13 @@ async function loginUserToRateHawk(email, password, userId) {
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     console.log('✍️ Filling login credentials...');
-    
+
     // Enhanced form filling with multiple approaches
     const formFillResult = await page.evaluate((email, password) => {
       // Try multiple selectors and approaches for email
       const emailSelectors = ['input[name="email"]', 'input[type="email"]', '#email', '#id_email', '[placeholder*="email" i]'];
       let emailElement = null;
-      
+
       for (const selector of emailSelectors) {
         const el = document.querySelector(selector);
         if (el) {
@@ -56,11 +56,11 @@ async function loginUserToRateHawk(email, password, userId) {
           break;
         }
       }
-      
+
       // Try multiple selectors for password
       const passwordSelectors = ['input[name="password"]', 'input[type="password"]', '#password', '#id_password', '[placeholder*="password" i]'];
       let passwordElement = null;
-      
+
       for (const selector of passwordSelectors) {
         const el = document.querySelector(selector);
         if (el) {
@@ -68,28 +68,28 @@ async function loginUserToRateHawk(email, password, userId) {
           break;
         }
       }
-      
+
       if (!emailElement || !passwordElement) {
         return { success: false, error: 'Could not find form fields' };
       }
-      
+
       // Clear and fill email field
       emailElement.focus();
       emailElement.value = '';
       emailElement.value = email;
       emailElement.dispatchEvent(new Event('input', { bubbles: true }));
       emailElement.dispatchEvent(new Event('change', { bubbles: true }));
-      
+
       // Clear and fill password field
       passwordElement.focus();
       passwordElement.value = '';
       passwordElement.value = password;
       passwordElement.dispatchEvent(new Event('input', { bubbles: true }));
       passwordElement.dispatchEvent(new Event('change', { bubbles: true }));
-      
-      return { 
-        success: true, 
-        emailValue: emailElement.value, 
+
+      return {
+        success: true,
+        emailValue: emailElement.value,
         passwordLength: passwordElement.value.length,
         emailSelector: emailElement.name || emailElement.id,
         passwordSelector: passwordElement.name || passwordElement.id
@@ -106,13 +106,13 @@ async function loginUserToRateHawk(email, password, userId) {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     console.log('🚀 Submitting login form...');
-    
+
     // Enhanced form submission with multiple approaches
     const submitResult = await page.evaluate(() => {
       // Try multiple submit approaches
       const submitSelectors = [
         'button[type="submit"]',
-        'input[type="submit"]', 
+        'input[type="submit"]',
         '.btn-primary',
         '.btn[type="submit"]',
         'button:contains("Log in")',
@@ -121,7 +121,7 @@ async function loginUserToRateHawk(email, password, userId) {
         '[value="Log in"]',
         '[value="Login"]'
       ];
-      
+
       for (const selector of submitSelectors) {
         try {
           const element = document.querySelector(selector);
@@ -134,7 +134,7 @@ async function loginUserToRateHawk(email, password, userId) {
           console.log('Submit attempt failed for:', selector, e.message);
         }
       }
-      
+
       // Try form submission
       const form = document.querySelector('form');
       if (form) {
@@ -142,7 +142,7 @@ async function loginUserToRateHawk(email, password, userId) {
         form.submit();
         return { method: 'form.submit' };
       }
-      
+
       return { method: 'none', error: 'No submit method found' };
     });
 
@@ -155,13 +155,13 @@ async function loginUserToRateHawk(email, password, userId) {
     }
 
     console.log('⏳ Waiting for login result (enhanced detection)...');
-    
+
     let loginSuccess = false;
     let finalUrl = '';
     let sessionId = '';
     let cookies = [];
     let navigationDetected = false;
-    
+
     try {
       // Enhanced detection with multiple methods
       const detectionPromises = [
@@ -173,41 +173,41 @@ async function loginUserToRateHawk(email, password, userId) {
               const currentCookies = await page.cookies();
               const currentUrl = page.url();
               cookieCheckCount++;
-              
+
               console.log(`🍪 Cookie check ${cookieCheckCount}: ${currentCookies.length} cookies, URL: ${currentUrl}`);
-              
+
               // Check for success indicators in cookies
-              const hasSessionCookies = currentCookies.some(c => 
-                c.name.includes('sessionid') || 
-                c.name.includes('csrftoken') || 
+              const hasSessionCookies = currentCookies.some(c =>
+                c.name.includes('sessionid') ||
+                c.name.includes('csrftoken') ||
                 c.name.includes('uid') ||
                 c.name.includes('user')
               );
-              
+
               // Check if we have a significant number of cookies (indicates login)
               const hasManyFunctionCookies = currentCookies.length >= 20;
-              
+
               // Check URL for success indicators
-              const urlIndicatesSuccess = currentUrl.includes('sid=') || 
-                                        currentUrl === 'https://www.ratehawk.com/' ||
-                                        !currentUrl.includes('/accounts/login/');
-              
+              const urlIndicatesSuccess = currentUrl.includes('sid=') ||
+                currentUrl === 'https://www.ratehawk.com/' ||
+                !currentUrl.includes('/accounts/login/');
+
               console.log(`🔍 Success indicators - Cookies: ${hasManyFunctionCookies} (${currentCookies.length}), Session cookies: ${hasSessionCookies}, URL success: ${urlIndicatesSuccess}`);
-              
+
               // If we have many cookies AND (session cookies OR URL change), consider it success
-              if ((hasManyFunctionCookies && hasSessionCookies) || 
-                  (hasManyFunctionCookies && urlIndicatesSuccess) ||
-                  urlIndicatesSuccess) {
+              if ((hasManyFunctionCookies && hasSessionCookies) ||
+                (hasManyFunctionCookies && urlIndicatesSuccess) ||
+                urlIndicatesSuccess) {
                 console.log('✅ Success detected via cookie/URL analysis!');
-                resolve({ 
-                  method: 'cookie_analysis', 
-                  success: true, 
+                resolve({
+                  method: 'cookie_analysis',
+                  success: true,
                   url: currentUrl,
-                  cookieCount: currentCookies.length 
+                  cookieCount: currentCookies.length
                 });
                 return;
               }
-              
+
               // Continue checking for up to 15 seconds
               if (cookieCheckCount < 15) {
                 setTimeout(checkCookiesAndUrl, 1000);
@@ -215,11 +215,11 @@ async function loginUserToRateHawk(email, password, userId) {
                 // After 15 seconds, if we have many cookies, assume success
                 if (hasManyFunctionCookies) {
                   console.log('✅ Success detected via cookie count after timeout!');
-                  resolve({ 
-                    method: 'cookie_timeout', 
-                    success: true, 
+                  resolve({
+                    method: 'cookie_timeout',
+                    success: true,
                     url: currentUrl,
-                    cookieCount: currentCookies.length 
+                    cookieCount: currentCookies.length
                   });
                 } else {
                   resolve({ method: 'timeout', success: false });
@@ -237,18 +237,18 @@ async function loginUserToRateHawk(email, password, userId) {
               }
             }
           };
-          
+
           // Start checking immediately
           checkCookiesAndUrl();
         }),
-        
+
         // Method 2: Navigation listener
         new Promise((resolve) => {
           page.on('framenavigated', (frame) => {
             if (frame === page.mainFrame()) {
               const url = frame.url();
               console.log('🔄 Frame navigation detected:', url);
-              
+
               if (!url.includes('/accounts/login/') || url.includes('sid=') || url === 'https://www.ratehawk.com/') {
                 console.log('✅ Navigation to success page detected!');
                 navigationDetected = true;
@@ -258,34 +258,34 @@ async function loginUserToRateHawk(email, password, userId) {
           });
         })
       ];
-      
+
       // Race all detection methods with a reasonable timeout
       const raceWithTimeout = Promise.race([
         ...detectionPromises,
         new Promise(resolve => setTimeout(() => resolve({ method: 'final_timeout', success: false }), 18000))
       ]);
-      
+
       const result = await raceWithTimeout;
       console.log(`🎯 Detection result: ${result.method} - ${result.success ? 'SUCCESS' : 'FAILED'}`);
-      
+
       if (result.success) {
         loginSuccess = true;
         finalUrl = result.url || 'https://www.ratehawk.com/';
       }
-      
+
     } catch (globalError) {
       console.log('🔄 Global detection error:', globalError.message);
-      
+
       // Context destruction often means successful navigation
-      if (globalError.message.includes('context') || 
-          globalError.message.includes('destroyed') ||
-          globalError.message.includes('Target closed')) {
+      if (globalError.message.includes('context') ||
+        globalError.message.includes('destroyed') ||
+        globalError.message.includes('Target closed')) {
         console.log('✅ Context destroyed - this typically means successful login!');
         loginSuccess = true;
         finalUrl = 'https://www.ratehawk.com/';
       }
     }
-    
+
     // Final state collection with enhanced cookie analysis
     try {
       if (!finalUrl) {
@@ -294,50 +294,50 @@ async function loginUserToRateHawk(email, password, userId) {
       cookies = await page.cookies();
       console.log(`📍 Final URL: ${finalUrl}`);
       console.log(`🍪 Final cookies collected: ${cookies.length}`);
-      
+
       // Enhanced success validation based on cookies
       if (!loginSuccess && cookies.length >= 20) {
         // Check for specific RateHawk session cookies
-        const ratehawkCookies = cookies.filter(c => 
-          c.name.includes('sessionid') || 
-          c.name.includes('csrftoken') || 
+        const ratehawkCookies = cookies.filter(c =>
+          c.name.includes('sessionid') ||
+          c.name.includes('csrftoken') ||
           c.name.includes('uid') ||
           c.name.includes('user') ||
           c.domain.includes('ratehawk')
         );
-        
+
         console.log(`🔍 Found ${ratehawkCookies.length} RateHawk-specific cookies out of ${cookies.length} total`);
-        
+
         if (ratehawkCookies.length >= 3 || cookies.length >= 25) {
           console.log('✅ Login success confirmed by cookie analysis!');
           loginSuccess = true;
         }
       }
-      
+
       // Additional URL-based validation
       if (!loginSuccess) {
-        loginSuccess = !finalUrl.includes('/accounts/login/') || 
-                      finalUrl.includes('sid=') || 
-                      finalUrl === 'https://www.ratehawk.com/';
+        loginSuccess = !finalUrl.includes('/accounts/login/') ||
+          finalUrl.includes('sid=') ||
+          finalUrl === 'https://www.ratehawk.com/';
         if (loginSuccess) {
           console.log('✅ Login success confirmed by final URL analysis!');
         }
       }
-      
+
     } catch (finalStateError) {
       console.log('📄 Final state collection error:', finalStateError.message);
-      
+
       // If we can't access the page, it likely means successful navigation
-      if (finalStateError.message.includes('context') || 
-          finalStateError.message.includes('destroyed') ||
-          finalStateError.message.includes('Target closed')) {
+      if (finalStateError.message.includes('context') ||
+        finalStateError.message.includes('destroyed') ||
+        finalStateError.message.includes('Target closed')) {
         console.log('✅ Cannot access page state - confirming successful login!');
         loginSuccess = true;
         finalUrl = finalUrl || 'https://www.ratehawk.com/';
         cookies = cookies.length > 0 ? cookies : []; // Keep existing cookies if available
       }
     }
-    
+
     // Extract or generate session ID
     if (finalUrl && finalUrl.includes('sid=')) {
       const sidMatch = finalUrl.match(/sid=([^&]+)/);
@@ -347,16 +347,16 @@ async function loginUserToRateHawk(email, password, userId) {
       const sessionCookie = cookies.find(c => c.name.includes('sessionid') || c.name.includes('session'));
       sessionId = sessionCookie ? sessionCookie.value : `session_${userId}_${Date.now()}`;
     }
-    
+
     console.log(`🎯 FINAL LOGIN RESULT: ${loginSuccess ? 'SUCCESS' : 'FAILED'}`);
     console.log(`🔑 Session ID: ${sessionId}`);
     console.log(`🔗 Final URL: ${finalUrl}`);
     console.log(`🍪 Cookies: ${cookies.length}`);
     console.log(`🔍 Navigation detected: ${navigationDetected}`);
-    
+
     if (loginSuccess) {
       console.log('✅ RateHawk authentication confirmed successful!');
-      
+
       return {
         success: true,
         sessionId: sessionId,
@@ -373,7 +373,7 @@ async function loginUserToRateHawk(email, password, userId) {
       };
     } else {
       console.log('❌ RateHawk authentication failed');
-      
+
       return {
         success: false,
         error: 'Authentication failed - credentials may be invalid',
@@ -386,7 +386,7 @@ async function loginUserToRateHawk(email, password, userId) {
 
   } catch (error) {
     console.error('💥 Login automation error:', error.message);
-    
+
     // Check if it's a connection error to the new endpoint
     if (error.message.includes('ENOTFOUND') || error.message.includes('production-sfo.browserless.io')) {
       console.error('🔗 Connection failed to new Browserless endpoint');
@@ -395,7 +395,7 @@ async function loginUserToRateHawk(email, password, userId) {
         error: `Failed to connect to Browserless (new endpoint): ${error.message}. Please check your token and network connection.`
       };
     }
-    
+
     return {
       success: false,
       error: `Login automation failed: ${error.message}`
@@ -430,7 +430,7 @@ function validateSession(session) {
   if (!session || !session.cookies || !Array.isArray(session.cookies)) {
     return false;
   }
-  
+
   // Check if session is too old (more than 24 hours)
   if (session.loginTime) {
     const sessionAge = Date.now() - new Date(session.loginTime);
@@ -439,14 +439,14 @@ function validateSession(session) {
       return false;
     }
   }
-  
+
   // Check for essential cookies
-  const hasEssentialCookies = session.cookies.some(c => 
-    c.name.includes('sessionid') || 
+  const hasEssentialCookies = session.cookies.some(c =>
+    c.name.includes('sessionid') ||
     c.name.includes('csrftoken') ||
     c.name.includes('uid')
   );
-  
+
   return hasEssentialCookies && session.cookies.length >= 15;
 }
 
@@ -455,28 +455,28 @@ function validateSession(session) {
  */
 async function testBrowserlessConnection() {
   console.log('🧪 Testing new Browserless endpoint connection...');
-  
+
   let browser;
   try {
     browser = await puppeteer.connect({
       browserWSEndpoint: `wss://production-sfo.browserless.io?token=${process.env.BROWSERLESS_TOKEN}&timeout=30000`
     });
-    
+
     const page = await browser.newPage();
     await page.goto('https://www.google.com', { timeout: 15000 });
-    
+
     const title = await page.title();
-    
+
     console.log('✅ New Browserless endpoint test successful!');
     console.log(`📄 Page title: ${title}`);
-    
+
     return {
       success: true,
       title: title,
       endpoint: 'production-sfo.browserless.io',
       timestamp: new Date().toISOString()
     };
-    
+
   } catch (error) {
     console.error('❌ New Browserless endpoint test failed:', error.message);
     return {
@@ -492,8 +492,8 @@ async function testBrowserlessConnection() {
   }
 }
 
-module.exports = { 
-  loginUserToRateHawk, 
+export {
+  loginUserToRateHawk,
   formatCookiesForRequest,
   validateSession,
   testBrowserlessConnection

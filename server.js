@@ -1,17 +1,18 @@
-require("dotenv").config();
-
-const express = require("express");
-const cors = require("cors");
-const { initializeDatabase } = require("./config/database");
+import dotenv from "dotenv";
+dotenv.config();
+import express from "express";
+// const cors = require("cors");
+import cors from "cors";
+import { initializeDatabase } from "./config/database.js";
 
 // Import routes
-const authRoutes = require("./routes/auth");
-const ratehawkRoutes = require("./routes/ratehawk");
+import authRoutes from "./routes/auth.js";
+import ratehawkRoutes from "./routes/ratehawk.js";
 
 // Import services
-const { loginUserToRateHawk } = require("./services/ratehawkLoginService");
-const userRoutes = require("./src/routes/userRoutes");
-
+import { loginUserToRateHawk } from "./services/ratehawkLoginService.js";
+import userRoutes from "./src/routes/userRoutes.js";
+import { BookingFormCreationRoute } from "./src/routes/createBookingFormRoutes.js";
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -50,6 +51,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/ratehawk", ratehawkRoutes);
 app.use("/api/hotels", ratehawkRoutes); // Alias for compatibility
 app.use("/api/user", userRoutes);
+app.use("/api", BookingFormCreationRoute);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

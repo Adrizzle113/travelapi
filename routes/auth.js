@@ -1,7 +1,7 @@
-const express = require('express');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { getDatabase } = require('../config/database');
+import express from 'express';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { getDatabase } from '../config/database.js';
 
 const router = express.Router();
 
@@ -22,23 +22,23 @@ router.post('/register', async (req, res) => {
 
     // Validation
     if (!email || !password) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Email and password are required' 
+        error: 'Email and password are required'
       });
     }
 
     if (!validateEmail(email)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Please provide a valid email address' 
+        error: 'Please provide a valid email address'
       });
     }
 
     if (!validatePassword(password)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Password must be at least 6 characters long' 
+        error: 'Password must be at least 6 characters long'
       });
     }
 
@@ -48,18 +48,18 @@ router.post('/register', async (req, res) => {
     db.run(
       `INSERT INTO users (email, password, ratehawk_email) VALUES (?, ?, ?)`,
       [email, hashedPassword, ratehawkEmail || email],
-      function(err) {
+      function (err) {
         if (err) {
           console.error('Registration error:', err);
           if (err.message.includes('UNIQUE constraint failed')) {
-            return res.status(400).json({ 
+            return res.status(400).json({
               success: false,
-              error: 'An account with this email already exists' 
+              error: 'An account with this email already exists'
             });
           }
-          return res.status(500).json({ 
+          return res.status(500).json({
             success: false,
-            error: 'Database error during registration' 
+            error: 'Database error during registration'
           });
         }
 
@@ -75,8 +75,8 @@ router.post('/register', async (req, res) => {
           success: true,
           message: 'Account created successfully',
           token,
-          user: { 
-            id: this.lastID, 
+          user: {
+            id: this.lastID,
             email,
             ratehawkEmail: ratehawkEmail || email
           }
@@ -85,9 +85,9 @@ router.post('/register', async (req, res) => {
     );
   } catch (error) {
     console.error('💥 Registration error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Internal server error during registration' 
+      error: 'Internal server error during registration'
     });
   }
 });
@@ -99,38 +99,38 @@ router.post('/login', async (req, res) => {
 
     // Validation
     if (!email || !password) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Email and password are required' 
+        error: 'Email and password are required'
       });
     }
 
     if (!validateEmail(email)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Please provide a valid email address' 
+        error: 'Please provide a valid email address'
       });
     }
 
     const db = getDatabase();
-    
+
     db.get(
       'SELECT * FROM users WHERE email = ? AND status = ?',
       [email, 'active'],
       async (err, user) => {
         if (err) {
           console.error('Login database error:', err);
-          return res.status(500).json({ 
+          return res.status(500).json({
             success: false,
-            error: 'Database error during login' 
+            error: 'Database error during login'
           });
         }
 
         if (!user) {
           console.log(`❌ Login attempt failed: User not found for ${email}`);
-          return res.status(401).json({ 
+          return res.status(401).json({
             success: false,
-            error: 'Invalid email or password' 
+            error: 'Invalid email or password'
           });
         }
 
@@ -138,9 +138,9 @@ router.post('/login', async (req, res) => {
           const isValidPassword = await bcrypt.compare(password, user.password);
           if (!isValidPassword) {
             console.log(`❌ Login attempt failed: Invalid password for ${email}`);
-            return res.status(401).json({ 
+            return res.status(401).json({
               success: false,
-              error: 'Invalid email or password' 
+              error: 'Invalid email or password'
             });
           }
 
@@ -167,8 +167,8 @@ router.post('/login', async (req, res) => {
             success: true,
             message: 'Login successful',
             token,
-            user: { 
-              id: user.id, 
+            user: {
+              id: user.id,
               email: user.email,
               ratehawkEmail: user.ratehawk_email || user.email,
               lastLogin: user.last_login
@@ -176,18 +176,18 @@ router.post('/login', async (req, res) => {
           });
         } catch (bcryptError) {
           console.error('Password comparison error:', bcryptError);
-          return res.status(500).json({ 
+          return res.status(500).json({
             success: false,
-            error: 'Authentication error' 
+            error: 'Authentication error'
           });
         }
       }
     );
   } catch (error) {
     console.error('💥 Login error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Internal server error during login' 
+      error: 'Internal server error during login'
     });
   }
 });
@@ -195,26 +195,26 @@ router.post('/login', async (req, res) => {
 // Verify token endpoint
 router.get('/verify', (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  
+
   if (!token) {
-    return res.status(401).json({ 
+    return res.status(401).json({
       success: false,
-      error: 'No token provided' 
+      error: 'No token provided'
     });
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key');
-    
+
     const db = getDatabase();
     db.get(
       'SELECT id, email, ratehawk_email, last_login FROM users WHERE id = ? AND status = ?',
       [decoded.userId, 'active'],
       (err, user) => {
         if (err || !user) {
-          return res.status(401).json({ 
+          return res.status(401).json({
             success: false,
-            error: 'Invalid token' 
+            error: 'Invalid token'
           });
         }
 
@@ -231,9 +231,9 @@ router.get('/verify', (req, res) => {
     );
   } catch (tokenError) {
     console.error('Token verification error:', tokenError);
-    res.status(401).json({ 
+    res.status(401).json({
       success: false,
-      error: 'Invalid or expired token' 
+      error: 'Invalid or expired token'
     });
   }
 });
@@ -241,17 +241,17 @@ router.get('/verify', (req, res) => {
 // Get user profile
 router.get('/profile', (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  
+
   if (!token) {
-    return res.status(401).json({ 
+    return res.status(401).json({
       success: false,
-      error: 'No token provided' 
+      error: 'No token provided'
     });
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key');
-    
+
     const db = getDatabase();
     db.get(
       `SELECT 
@@ -262,9 +262,9 @@ router.get('/profile', (req, res) => {
       [decoded.userId, decoded.userId, decoded.userId, 'active'],
       (err, user) => {
         if (err || !user) {
-          return res.status(401).json({ 
+          return res.status(401).json({
             success: false,
-            error: 'User not found' 
+            error: 'User not found'
           });
         }
 
@@ -284,11 +284,11 @@ router.get('/profile', (req, res) => {
     );
   } catch (tokenError) {
     console.error('Profile fetch error:', tokenError);
-    res.status(401).json({ 
+    res.status(401).json({
       success: false,
-      error: 'Invalid or expired token' 
+      error: 'Invalid or expired token'
     });
   }
 });
 
-module.exports = router;
+export default router;
