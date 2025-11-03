@@ -81,14 +81,11 @@ global.userSessions = new Map();
 // };
 
 // app.use(cors(corsOptions));
-
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    credentials: true,
-  })
-);
+app.use(cors({
+    origin: "*", // Allow only your frontend origin
+    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
+    credentials: true, // Allow cookies and other credentials
+  }));
 
 // Handle preflight requests explicitly (additional safety)
 // app.options("*", cors(corsOptions));
