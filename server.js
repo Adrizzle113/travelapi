@@ -82,10 +82,12 @@ global.userSessions = new Map();
 
 // app.use(cors(corsOptions));
 app.use(cors({
-    origin: "*", // Allow only your frontend origin
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
-    credentials: true, // Allow cookies and other credentials
-  }));
+  origin: ['http://localhost:8080', 'https://travel-frontend-two-nu.vercel.app', 'http://localhost:8000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+  optionsSuccessStatus: 200
+}));
 
 // Handle preflight requests explicitly (additional safety)
 // app.options("*", cors(corsOptions));
