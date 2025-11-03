@@ -20,20 +20,68 @@ const PORT = process.env.PORT || 3001;
 global.userSessions = new Map();
 
 // Middleware setup
-app.use(
-  cors({
-    origin: [
+// CORS configuration - allow requests from frontend
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, or same-origin requests)
+    if (!origin) return callback(null, true);
+
+    // List of allowed origins
+    const allowedOrigins = [
       "http://localhost:8080",
-      "http://localhost:8081", // ← ADD THIS for your frontend
-      "http://127.0.0.1:8081", // ← ADD THIS too
+      "http://localhost:8081",
+      "http://127.0.0.1:8080",
+      "http://127.0.0.1:8081",
       "http://localhost:3000",
       "https://lovable.dev",
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  })
-);
+      // Add your production frontend URL here when deployed
+      // "https://your-frontend-domain.com",
+    ];
+
+    // Allow all localhost and 127.0.0.1 origins for development
+    // This allows any port on localhost
+    if (origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:') ||
+      origin.startsWith('https://localhost:') ||
+      origin.startsWith('https://127.0.0.1:')) {
+      return callback(null, true);
+    }
+
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log(`⚠️ CORS blocked origin: ${origin}`);
+      // For development, you might want to allow all origins
+      // For production, keep this strict
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔓 Development mode: Allowing origin ${origin}`);
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+    "Access-Control-Request-Method",
+    "Access-Control-Request-Headers",
+  ],
+  exposedHeaders: ["Content-Range", "X-Content-Range"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly (additional safety)
+app.options('*', cors(corsOptions));
 
 // Body parsing
 app.use(express.json({ limit: "10mb" }));

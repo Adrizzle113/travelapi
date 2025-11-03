@@ -157,8 +157,8 @@ router.get("/hotel/details", async (req, res) => {
   }
 
   const reqData = {
-    checkin: "2025-10-13",
-    checkout: "2025-10-14",
+    checkin: "2025-11-13",
+    checkout: "2025-11-14",
     residency: "gb",
     language: "en",
     guests: [
@@ -559,8 +559,8 @@ router.get("/stats", async (req, res) => {
         successRate:
           stats.total_attempts > 0
             ? Math.round(
-                (stats.successful_attempts / stats.total_attempts) * 100
-              ) + "%"
+              (stats.successful_attempts / stats.total_attempts) * 100
+            ) + "%"
             : "0%",
       },
       activeSessions: global.userSessions.size,
