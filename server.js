@@ -91,7 +91,7 @@ app.use(
 );
 
 // Handle preflight requests explicitly (additional safety)
-app.options("*", cors(corsOptions));
+// app.options("*", cors(corsOptions));
 
 // Body parsing
 app.use(express.json({ limit: "10mb" }));
