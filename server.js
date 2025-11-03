@@ -29,6 +29,7 @@ const corsOptions = {
     // List of allowed origins
     const allowedOrigins = [
       "http://localhost:8080",
+      "https://travel-frontend-two-nu.vercel.app",
       "http://localhost:8081",
       "http://127.0.0.1:8080",
       "http://127.0.0.1:8081",
@@ -40,7 +41,8 @@ const corsOptions = {
 
     // Allow all localhost and 127.0.0.1 origins for development
     // This allows any port on localhost
-    if (origin.startsWith('http://localhost:') ||
+    if (origin.startsWith('http://localhost:8080') ||
+      origin.startsWith('https://travel-frontend-two-nu.vercel.app') ||
       origin.startsWith('http://127.0.0.1:') ||
       origin.startsWith('https://localhost:') ||
       origin.startsWith('https://127.0.0.1:')) {
