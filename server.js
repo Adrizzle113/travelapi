@@ -21,47 +21,53 @@ global.userSessions = new Map();
 
 // Middleware setup
 // CORS configuration - allow requests from frontend
+const allowedOrigins = [
+  "http://localhost:8080",
+  "https://travel-frontend-two-nu.vercel.app",
+  "http://localhost:8081",
+  "http://127.0.0.1:8080",
+  "http://127.0.0.1:8081",
+  "http://localhost:3000",
+  "https://lovable.dev",
+];
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, or same-origin requests)
-    if (!origin) return callback(null, true);
+    // Log the incoming origin for debugging
+    console.log(`🌐 CORS request from origin: ${origin || "no origin"}`);
 
-    // List of allowed origins
-    const allowedOrigins = [
-      "http://localhost:8080",
-      "https://travel-frontend-two-nu.vercel.app",
-      "http://localhost:8081",
-      "http://127.0.0.1:8080",
-      "http://127.0.0.1:8081",
-      "http://localhost:3000",
-      "https://lovable.dev",
-      // Add your production frontend URL here when deployed
-      // "https://your-frontend-domain.com",
-    ];
+    // Allow requests with no origin (like mobile apps, curl, or same-origin requests)
+    if (!origin) {
+      console.log("✅ Allowing request with no origin");
+      return callback(null, true);
+    }
 
     // Allow all localhost and 127.0.0.1 origins for development
-    // This allows any port on localhost
     if (
       origin.startsWith("http://localhost:") ||
-      origin.startsWith("https://travel-frontend-two-nu.vercel.app") ||
       origin.startsWith("http://127.0.0.1:") ||
       origin.startsWith("https://localhost:") ||
       origin.startsWith("https://127.0.0.1:")
     ) {
+      console.log(`✅ Allowing localhost origin: ${origin}`);
       return callback(null, true);
     }
 
     // Check if origin is in allowed list
     if (allowedOrigins.includes(origin)) {
+      console.log(`✅ Allowing origin from list: ${origin}`);
       callback(null, true);
     } else {
       console.log(`⚠️ CORS blocked origin: ${origin}`);
-      // For development, you might want to allow all origins
-      // For production, keep this strict
-      if (process.env.NODE_ENV === "development") {
+      // For production, allow the frontend origin even if not in strict list
+      if (origin === "https://travel-frontend-two-nu.vercel.app") {
+        console.log(`✅ Allowing frontend origin: ${origin}`);
+        callback(null, true);
+      } else if (process.env.NODE_ENV === "development") {
         console.log(`🔓 Development mode: Allowing origin ${origin}`);
         callback(null, true);
       } else {
+        console.log(`❌ Blocking origin: ${origin}`);
         callback(new Error("Not allowed by CORS"));
       }
     }
@@ -82,11 +88,39 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-// Apply CORS middleware
+// Apply CORS middleware FIRST - before any routes
 app.use(cors(corsOptions));
 
-// Handle preflight requests explicitly (additional safety)
-app.options("*", cors(corsOptions));
+// Handle preflight OPTIONS requests explicitly for all routes
+app.options("*", (req, res) => {
+  const origin = req.headers.origin;
+  console.log(`🔄 Handling OPTIONS preflight request from: ${origin}`);
+
+  // Check if origin is allowed
+  if (!origin) {
+    // No origin header - allow it (for same-origin requests, mobile apps, etc.)
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
+    res.header("Access-Control-Max-Age", "86400"); // 24 hours
+    console.log(`✅ OPTIONS preflight approved (no origin)`);
+    return res.status(204).send();
+  }
+
+  if (allowedOrigins.includes(origin) || origin === "https://travel-frontend-two-nu.vercel.app") {
+    // When credentials is true, we MUST return the specific origin, not *
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Max-Age", "86400"); // 24 hours
+    console.log(`✅ OPTIONS preflight approved for: ${origin}`);
+    return res.status(204).send();
+  } else {
+    console.log(`❌ OPTIONS preflight blocked for: ${origin}`);
+    res.status(403).json({ error: "CORS preflight failed" });
+  }
+});
 
 // Body parsing
 app.use(express.json({ limit: "10mb" }));
@@ -106,8 +140,45 @@ app.use("/api/hotels", ratehawkRoutes); // Alias for compatibility
 app.use("/api/user", userRoutes);
 app.use("/api", BookingFormCreationRoute);
 
-// Health check endpoint
+// Explicit OPTIONS handler for health endpoint (must come before GET handler)
+app.options("/api/health", (req, res) => {
+  const origin = req.headers.origin;
+  console.log(`🔄 Handling OPTIONS for /api/health from: ${origin}`);
+
+  if (!origin) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+    res.header("Access-Control-Max-Age", "86400");
+    return res.status(204).send();
+  }
+
+  if (allowedOrigins.includes(origin) || origin === "https://travel-frontend-two-nu.vercel.app") {
+    // When credentials is true, we MUST return the specific origin, not *
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Max-Age", "86400");
+    console.log(`✅ OPTIONS /api/health approved for: ${origin}`);
+    return res.status(204).send();
+  }
+
+  console.log(`❌ OPTIONS /api/health blocked for: ${origin}`);
+  res.status(403).json({ error: "CORS preflight failed" });
+});
+
+// Health check endpoint with explicit CORS headers
 app.get("/api/health", (req, res) => {
+  const origin = req.headers.origin;
+  console.log(`📊 GET /api/health request from: ${origin}`);
+
+  // Set CORS headers explicitly
+  if (origin && (allowedOrigins.includes(origin) || origin === "https://travel-frontend-two-nu.vercel.app")) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+  }
+
   res.json({
     status: "healthy",
     timestamp: new Date().toISOString(),
