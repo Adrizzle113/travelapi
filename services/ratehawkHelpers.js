@@ -3,6 +3,91 @@
 // Create this as services/ratehawkHelpers.js
 // ================================
 
+const DESTINATIONS = [
+  {
+    id: "965847972",
+    name: "Rio de Janeiro, Brazil",
+    aliases: ["rio de janeiro", "rio de janeiro brazil", "rio"],
+  },
+  {
+    id: "70308",
+    name: "New York, USA",
+    aliases: ["new york", "nyc", "new york city"],
+  },
+  {
+    id: "76876",
+    name: "London, UK",
+    aliases: ["london", "london uk"],
+  },
+  {
+    id: "82139",
+    name: "Tokyo, Japan",
+    aliases: ["tokyo", "tokyo japan"],
+  },
+  {
+    id: "69474",
+    name: "Paris, France",
+    aliases: ["paris", "paris france"],
+  },
+  {
+    id: "74107",
+    name: "Bangkok, Thailand",
+    aliases: ["bangkok", "bangkok thailand"],
+  },
+  {
+    id: "74108",
+    name: "Singapore",
+    aliases: ["singapore"],
+  },
+  {
+    id: "2998",
+    name: "Las Vegas, USA",
+    aliases: ["las vegas", "vegas"],
+  },
+  {
+    id: "2008",
+    name: "Las Vegas (Alt), USA",
+    aliases: ["las vegas alt"],
+  },
+  {
+    id: "74109",
+    name: "Dubai, UAE",
+    aliases: ["dubai", "dubai uae"],
+  },
+  {
+    id: "74110",
+    name: "Rome, Italy",
+    aliases: ["rome", "rome italy"],
+  },
+  {
+    id: "2011",
+    name: "Los Angeles, USA",
+    aliases: ["los angeles", "la", "los angeles usa"],
+  },
+];
+
+const destinationLookup = new Map();
+
+const normalizeDestinationKey = (value) =>
+  value?.toString().trim().toLowerCase().replace(/\s+/g, " ") || "";
+
+const registerDestinationKey = (key, entry) => {
+  if (!key) return;
+  destinationLookup.set(key, entry);
+};
+
+DESTINATIONS.forEach((destination) => {
+  registerDestinationKey(destination.id, destination);
+  registerDestinationKey(normalizeDestinationKey(destination.id), destination);
+  registerDestinationKey(destination.name, destination);
+  registerDestinationKey(normalizeDestinationKey(destination.name), destination);
+
+  destination.aliases?.forEach((alias) => {
+    registerDestinationKey(alias, destination);
+    registerDestinationKey(normalizeDestinationKey(alias), destination);
+  });
+});
+
 /**
  * Perform basic search to get hotel list and session
  */
@@ -276,29 +361,51 @@ function formatGuestsForRateHawk(guests) {
  * Get destination information with region ID mapping
  */
 function getDestinationInfo(destination) {
-  const destinationMapping = {
-    965847972: { id: "965847972", name: "Rio de Janeiro, Brazil" },
-    70308: { id: "70308", name: "New York, USA" },
-    76876: { id: "76876", name: "London, UK" },
-    82139: { id: "82139", name: "Tokyo, Japan" },
-    69474: { id: "69474", name: "Paris, France" },
-    74107: { id: "74107", name: "Bangkok, Thailand" },
-    74108: { id: "74108", name: "Singapore" },
-    2998: { id: "2998", name: "Las Vegas, USA" },
-    2008: { id: "2008", name: "Las Vegas, USA" },
-    74109: { id: "74109", name: "Dubai, UAE" },
-    74110: { id: "74110", name: "Rome, Italy" },
-    2011: { id: "2011", name: "Los Angeles, USA" },
-  };
+  let rawDestination = destination;
 
-  const info = destinationMapping[destination];
-  if (!info) {
-    console.log(`⚠️ Unknown destination: ${destination}, using as-is`);
-    return { id: destination, name: destination };
+  if (
+    destination &&
+    typeof destination === "object" &&
+    !Array.isArray(destination)
+  ) {
+    rawDestination =
+      destination.id || destination.destination || destination.name;
   }
 
-  console.log(`🗺️ Mapped destination ${destination} → region_id: ${info.id}`);
-  return info;
+  if (rawDestination === undefined || rawDestination === null) {
+    throw new Error("Destination is required");
+  }
+
+  const destinationString = `${rawDestination}`.trim();
+  const normalizedKey = normalizeDestinationKey(destinationString);
+
+  const mappedDestination =
+    destinationLookup.get(destinationString) ||
+    destinationLookup.get(normalizedKey);
+
+  if (mappedDestination) {
+    console.log(
+      `🗺️ Mapped destination ${destinationString} → region_id: ${mappedDestination.id}`
+    );
+    return mappedDestination;
+  }
+
+  if (/^\d+$/.test(destinationString)) {
+    console.log(
+      `ℹ️ Using custom numeric destination ${destinationString} with no predefined metadata`
+    );
+    return {
+      id: destinationString,
+      name: `Region ${destinationString}`,
+    };
+  }
+
+  console.warn(
+    `⚠️ Unsupported destination "${destinationString}". Please use a valid RateHawk region ID or one of the predefined destinations.`
+  );
+  throw new Error(
+    `Unsupported destination "${destinationString}". Please select a destination from the list or provide a RateHawk region ID.`
+  );
 }
 
 /**

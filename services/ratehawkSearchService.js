@@ -151,6 +151,19 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
   console.log(`🏨 Fetching booking data for: ${hotel.name} (${hotelId})`);
 
   try {
+    // Check if hotel already has rates in the initial search results
+    const existingRates = hotel.ratehawk_data?.rates || hotel.rates || [];
+    const existingRoomGroups = hotel.ratehawk_data?.room_groups || hotel.room_groups || [];
+
+    if (existingRates.length > 0 || existingRoomGroups.length > 0) {
+      console.log(`✅ Using existing rates/room_groups from search results for ${hotel.name}`);
+      return extractBookingDataFromHotelDetails({
+        rates: existingRates,
+        room_groups: existingRoomGroups,
+        hotel: hotel.ratehawk_data
+      }, userSession, searchParams);
+    }
+
     // Method 1: Try hotel details endpoint with search session
     const detailsResponse = await fetchHotelDetails(hotelId, searchSessionId, userSession);
 
@@ -159,18 +172,30 @@ async function fetchSingleHotelBookingData(hotel, searchSessionId, userSession, 
       return extractBookingDataFromHotelDetails(detailsResponse.data, userSession, searchParams);
     }
 
-    // Method 2: Try individual hotel page
+    // Method 2: Try individual hotel page with session ID in searchParams
     console.log(`🔄 Trying alternative method for ${hotel.name}...`);
-    const pageResponse = await fetchHotelPageDetails(hotelId, userSession, searchParams);
+    const pageResponse = await fetchHotelPageDetails(hotelId, userSession, {
+      ...searchParams,
+      searchSessionId: searchSessionId
+    });
 
     if (pageResponse.success && pageResponse.data) {
       console.log(`✅ Got hotel page data for ${hotel.name}`);
       return extractBookingDataFromHotelDetails(pageResponse.data, userSession, searchParams);
     }
 
+    // If both methods failed, return with basic hotel info (no detailed rates)
+    console.log(`⚠️ No detailed booking data found for ${hotel.name}, returning basic hotel info`);
     return {
       success: false,
-      error: 'No booking data found'
+      error: 'No booking data found - hotel details endpoints returned 404. This may be due to RateHawk API changes or invalid hotel IDs.',
+      rates: existingRates,
+      room_groups: existingRoomGroups,
+      roomTypes: existingRoomGroups.map(rg => ({
+        id: rg.room_group_id || rg.rg_hash,
+        name: rg.name_struct?.main_name || rg.name || 'Room Type'
+      })),
+      bookingOptions: []
     };
 
   } catch (error) {
@@ -190,49 +215,72 @@ async function fetchHotelDetails(hotelId, searchSessionId, userSession) {
     const cookieString = formatCookiesForRequest(userSession.cookies);
     const csrfToken = extractCSRFToken(userSession.cookies);
 
-    const detailsUrl = `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel_info?session=${searchSessionId}&hotel_id=${hotelId}`;
+    // Try multiple URL formats
+    const urlFormats = [
+      `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel_info?session=${searchSessionId}&hotel_id=${hotelId}`,
+      `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel_info?session=${searchSessionId}&hotel_id=${encodeURIComponent(hotelId)}`,
+      `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel_info?hotel_id=${hotelId}&session=${searchSessionId}`
+    ];
 
-    console.log(`📡 Fetching: ${detailsUrl}`);
+    for (const detailsUrl of urlFormats) {
+      try {
+        console.log(`📡 Fetching hotel details: ${detailsUrl}`);
 
-    const response = await fetch(detailsUrl, {
-      method: 'GET',
-      headers: {
-        'accept': 'application/json',
-        'cookie': cookieString,
-        'referer': 'https://www.ratehawk.com/',
-        'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36',
-        'x-requested-with': 'XMLHttpRequest',
-        ...(csrfToken && { 'x-csrftoken': csrfToken })
+        const headers = {
+          'accept': 'application/json',
+          'accept-language': 'en-US,en;q=0.9',
+          'cookie': cookieString,
+          'referer': 'https://www.ratehawk.com/',
+          'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36',
+          'x-requested-with': 'XMLHttpRequest',
+          'origin': 'https://www.ratehawk.com',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          ...(csrfToken && { 'x-csrftoken': csrfToken })
+        };
+
+        const response = await fetch(detailsUrl, {
+          method: 'GET',
+          headers: headers
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+
+          // Log structure for debugging
+          console.log('🔍 Hotel details response structure:', {
+            hasRoomGroups: !!data.room_groups,
+            hasRates: !!data.rates,
+            hasData: !!data.data,
+            hasHotel: !!data.hotel,
+            topLevelKeys: Object.keys(data),
+            roomGroupsCount: data.room_groups?.length || 0,
+            ratesCount: data.rates?.length || 0
+          });
+
+          return {
+            success: true,
+            data: data
+          };
+        } else if (response.status === 404) {
+          console.log(`⚠️ 404 error for hotel_info endpoint, trying next format...`);
+          continue;
+        } else {
+          console.log(`⚠️ HTTP ${response.status} for hotel_info, trying next format...`);
+          continue;
+        }
+      } catch (fetchError) {
+        console.log(`⚠️ Error with hotel_info URL format: ${fetchError.message}`);
+        continue;
       }
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json();
-
-    // Step 1: Log full API response from RateHawk
-    console.log('🔍 Raw RateHawk API response:', JSON.stringify(data, null, 2));
-
-    // Step 2: Check if room_groups or rates are missing or empty
-    console.log('🔍 Extracted room_groups count:', data.room_groups?.length || 0);
-    console.log('🔍 Extracted rates count:', data.rates?.length || 0);
-
-    // Step 3: Log the structure of the data
-    console.log('🔍 Data structure analysis:', {
-      hasRoomGroups: !!data.room_groups,
-      hasRates: !!data.rates,
-      hasData: !!data.data,
-      hasHotel: !!data.hotel,
-      topLevelKeys: Object.keys(data),
-      dataKeys: data.data ? Object.keys(data.data) : [],
-      hotelKeys: data.hotel ? Object.keys(data.hotel) : []
-    });
-
+    // If all formats failed
+    console.error(`💥 All hotel_info URL formats failed for ${hotelId}`);
     return {
-      success: true,
-      data: data
+      success: false,
+      error: `Hotel info endpoint returned 404 - session may be invalid or endpoint structure changed`
     };
 
   } catch (error) {
@@ -251,33 +299,69 @@ async function fetchHotelPageDetails(hotelId, userSession, searchParams) {
   try {
     const { checkin, checkout, guests, residency } = searchParams;
     const cookieString = formatCookiesForRequest(userSession.cookies);
+    const csrfToken = extractCSRFToken(userSession.cookies);
 
     // Construct hotel-specific search
     const guestCount = Array.isArray(guests) ? guests.reduce((sum, room) => sum + room.adults, 0) : guests;
     const dateRange = `${formatDateForRateHawk(checkin)}-${formatDateForRateHawk(checkout)}`;
 
-    const pageUrl = `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel?hotel_id=${hotelId}&dates=${dateRange}&guests=${guestCount}&residency=${residency}`;
+    // Try multiple URL formats in case the endpoint structure changed
+    const urlFormats = [
+      `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel?hotel_id=${hotelId}&dates=${dateRange}&guests=${guestCount}&residency=${residency}`,
+      `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel?hotel_id=${encodeURIComponent(hotelId)}&dates=${dateRange}&guests=${guestCount}&residency=${residency}`,
+      // Try with session if available
+      searchParams.searchSessionId ? `https://www.ratehawk.com/hotel/search/v2/b2bsite/hotel?session=${searchParams.searchSessionId}&hotel_id=${hotelId}&dates=${dateRange}&guests=${guestCount}&residency=${residency}` : null
+    ].filter(Boolean);
 
-    console.log(`📡 Fetching hotel page: ${pageUrl}`);
+    for (const pageUrl of urlFormats) {
+      try {
+        console.log(`📡 Fetching hotel page: ${pageUrl}`);
 
-    const response = await fetch(pageUrl, {
-      method: 'GET',
-      headers: {
-        'accept': 'application/json',
-        'cookie': cookieString,
-        'referer': 'https://www.ratehawk.com/',
-        'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36'
+        const headers = {
+          'accept': 'application/json',
+          'accept-language': 'en-US,en;q=0.9',
+          'cookie': cookieString,
+          'referer': 'https://www.ratehawk.com/',
+          'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36',
+          'x-requested-with': 'XMLHttpRequest',
+          'origin': 'https://www.ratehawk.com',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          ...(csrfToken && { 'x-csrftoken': csrfToken })
+        };
+
+        const response = await fetch(pageUrl, {
+          method: 'GET',
+          headers: headers
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ Hotel page fetch successful for ${hotelId}`);
+          return {
+            success: true,
+            data: data
+          };
+        } else if (response.status === 404) {
+          console.log(`⚠️ 404 error for URL format: ${pageUrl.substring(0, 80)}...`);
+          // Try next URL format
+          continue;
+        } else {
+          console.log(`⚠️ HTTP ${response.status} for hotel page, trying next format...`);
+          continue;
+        }
+      } catch (fetchError) {
+        console.log(`⚠️ Error with URL format, trying next: ${fetchError.message}`);
+        continue;
       }
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    // If all URL formats failed, return error
+    console.error(`💥 All hotel page URL formats failed for ${hotelId}`);
     return {
-      success: true,
-      data: data
+      success: false,
+      error: `Hotel page endpoint returned 404 - hotel ID may be invalid or endpoint structure changed`
     };
 
   } catch (error) {
