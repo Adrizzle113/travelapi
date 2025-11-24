@@ -157,8 +157,8 @@ router.get("/hotel/details", async (req, res) => {
   }
 
   const reqData = {
-    checkin: "2025-11-13",
-    checkout: "2025-11-14",
+    checkin: "2025-11-25",
+    checkout: "2025-11-27",
     residency: "gb",
     language: "en",
     guests: [
