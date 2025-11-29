@@ -148,8 +148,10 @@ router.get("/hotel/details-t", async (req, res) => {
   }
 });
 
-router.get("/hotel/details", async (req, res) => {
+router.post("/hotel/details", async (req, res) => {
   const { hotel_id } = req.query;
+  const { hotelId, searchContext, residency, currency } = req.body
+  console.log( hotelId, searchContext , residency, currency)
   console.log("🚀 ~ hotel_id:", hotel_id);
 
   if (!hotel_id) {
@@ -157,8 +159,8 @@ router.get("/hotel/details", async (req, res) => {
   }
 
   const reqData = {
-    checkin: "2025-11-25",
-    checkout: "2025-11-27",
+    checkin: searchContext.checkin,
+    checkout: searchContext.checkout,
     residency: "gb",
     language: "en",
     guests: [
@@ -168,7 +170,7 @@ router.get("/hotel/details", async (req, res) => {
       },
     ],
     id: hotel_id,
-    currency: "EUR",
+    currency:currency,
   };
 
   const result = await axios.post(
@@ -191,6 +193,8 @@ router.get("/hotel/details", async (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+
 
 // Login to RateHawk
 router.post("/login", async (req, res) => {
