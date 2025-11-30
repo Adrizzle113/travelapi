@@ -148,27 +148,34 @@ router.get("/hotel/details-t", async (req, res) => {
   }
 });
 
-router.get("/hotel/details", async (req, res) => {
-  const { hotel_id } = req.query;
-  console.log("🚀 ~ hotel_id:", hotel_id);
+router.post("/hotel/details", async (req, res) => {
+  const { hotelId, searchContext } = req.body;
+  console.log("🚀 ~ req.bod:", req.body);
 
-  if (!hotel_id) {
-    return res.status(400).json({ error: "Hotel ID is required" });
+  const checkin = searchContext.checkin;
+  console.log("🚀 ~ checkin:", checkin);
+  const checkout = searchContext.checkout;
+  const guests = searchContext.guests;
+
+  if (!hotelId && checkin && checkout && guests) {
+    return res
+      .status(400)
+      .json({ error: "Hotel ID  and searchContext are required " });
   }
 
   const reqData = {
-    checkin: "2025-11-25",
-    checkout: "2025-11-27",
+    checkin: checkin,
+    checkout: checkout,
     residency: "gb",
     language: "en",
     guests: [
       {
-        adults: 2,
+        adults: guests,
         children: [],
       },
     ],
-    id: hotel_id,
-    currency: "EUR",
+    id: hotelId,
+    currency: "USD",
   };
 
   const result = await axios.post(
