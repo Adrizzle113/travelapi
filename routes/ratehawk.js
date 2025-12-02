@@ -150,12 +150,19 @@ router.get("/hotel/details-t", async (req, res) => {
 
 router.post("/hotel/details", async (req, res) => {
   const { hotel_id } = req.query;
-  const { hotelId, searchContext, residency, currency } = req.body
-  console.log( hotelId, searchContext , residency, currency)
+  const { hotelId, searchContext, residency, currency } = req.body;
+  console.log(hotelId, searchContext, residency, currency);
   console.log("🚀 ~ hotel_id:", hotel_id);
 
-  if (!hotel_id) {
-    return res.status(400).json({ error: "Hotel ID is required" });
+  const checkin = searchContext.checkin;
+  console.log("🚀 ~ checkin:", checkin);
+  const checkout = searchContext.checkout;
+  const guests = searchContext.guests;
+
+  if (!hotelId && checkin && checkout && guests) {
+    return res
+      .status(400)
+      .json({ error: "Hotel ID  and searchContext are required " });
   }
 
   const reqData = {
@@ -170,7 +177,7 @@ router.post("/hotel/details", async (req, res) => {
       },
     ],
     id: hotel_id,
-    currency:currency,
+    currency: currency,
   };
 
   const result = await axios.post(
@@ -193,8 +200,6 @@ router.post("/hotel/details", async (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
-
-
 
 // Login to RateHawk
 router.post("/login", async (req, res) => {
@@ -563,8 +568,8 @@ router.get("/stats", async (req, res) => {
         successRate:
           stats.total_attempts > 0
             ? Math.round(
-              (stats.successful_attempts / stats.total_attempts) * 100
-            ) + "%"
+                (stats.successful_attempts / stats.total_attempts) * 100
+              ) + "%"
             : "0%",
       },
       activeSessions: global.userSessions.size,

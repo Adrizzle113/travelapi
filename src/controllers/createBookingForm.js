@@ -13,11 +13,9 @@ const api = axios.create({
 });
 
 export const createBookingForm = async (req, res) => {
-  console.log(
-    "hit this one"
-  )
-  const { book_hash } = req.body
-  console.log(book_hash, "book_hashbook_hashbook_hash")
+  console.log("hit");
+  const { book_hashs, hotelData } = req.body;
+  console.log(book_hashs, hotelData, "book_hashbook_hashbook_hash");
   try {
     // // 1️⃣ Step 1: Call hotel search API
     // const searchPayload = {
@@ -50,6 +48,7 @@ export const createBookingForm = async (req, res) => {
     // }
 
     // 2️⃣ Step 2: Call booking form API
+    const book_hash = "h-48eb6527-778e-5f64-91c9-b03065f9cc1e";
     const bookingPayload = {
       partner_order_id: `partner-${uuidv4()}`, // unique ID
       book_hash: book_hash,
@@ -57,7 +56,7 @@ export const createBookingForm = async (req, res) => {
       user_ip: req.ip || "127.0.0.1",
     };
 
-    console.log(bookingPayload)
+    console.log(bookingPayload);
     const bookingResponse = await api.post(
       "hotel/order/booking/form/",
       bookingPayload
@@ -67,7 +66,7 @@ export const createBookingForm = async (req, res) => {
     res.json({
       message: "✅ Booking form created successfully",
       data: {
-        // hotelDetails: hotelResults,
+        hotelDetails: hotelData,
         bookingForm: bookingResponse.data,
       },
     });
@@ -85,7 +84,9 @@ export const createBookingForm = async (req, res) => {
 
 export const getCountries = async (req, res) => {
   try {
-    const countries = await api.get("https://www.ratehawk.com/api/v3/site/accounts/countries/");
+    const countries = await api.get(
+      "https://www.ratehawk.com/api/v3/site/accounts/countries/"
+    );
     res.json(countries.data);
   } catch (error) {
     console.error("💥 Get countries error:", error);
