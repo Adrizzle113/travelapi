@@ -149,8 +149,10 @@ router.get("/hotel/details-t", async (req, res) => {
 });
 
 router.post("/hotel/details", async (req, res) => {
-  const { hotelId, searchContext } = req.body;
-  console.log("🚀 ~ req.bod:", req.body);
+  const { hotel_id } = req.query;
+  const { hotelId, searchContext, residency, currency } = req.body;
+  console.log(hotelId, searchContext, residency, currency);
+  console.log("🚀 ~ hotel_id:", hotel_id);
 
   const checkin = searchContext.checkin;
   console.log("🚀 ~ checkin:", checkin);
@@ -164,18 +166,18 @@ router.post("/hotel/details", async (req, res) => {
   }
 
   const reqData = {
-    checkin: checkin,
-    checkout: checkout,
+    checkin: searchContext.checkin,
+    checkout: searchContext.checkout,
     residency: "gb",
     language: "en",
     guests: [
       {
-        adults: guests,
+        adults: 2,
         children: [],
       },
     ],
-    id: hotelId,
-    currency: "USD",
+    id: hotel_id,
+    currency: currency,
   };
 
   const result = await axios.post(
@@ -566,8 +568,8 @@ router.get("/stats", async (req, res) => {
         successRate:
           stats.total_attempts > 0
             ? Math.round(
-              (stats.successful_attempts / stats.total_attempts) * 100
-            ) + "%"
+                (stats.successful_attempts / stats.total_attempts) * 100
+              ) + "%"
             : "0%",
       },
       activeSessions: global.userSessions.size,

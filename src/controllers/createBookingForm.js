@@ -13,44 +13,50 @@ const api = axios.create({
 });
 
 export const createBookingForm = async (req, res) => {
+  console.log("hit");
+  const { book_hashs, hotelData } = req.body;
+  console.log(book_hashs, hotelData, "book_hashbook_hashbook_hash");
   try {
-    // 1️⃣ Step 1: Call hotel search API
-    const searchPayload = {
-      checkin: "2025-10-05",
-      checkout: "2025-10-06",
-      residency: "gb",
-      language: "en",
-      guests: [
-        {
-          adults: 2,
-          children: [],
-        },
-      ],
-      id: "test_hotel_do_not_book",
-      currency: "EUR",
-    };
+    // // 1️⃣ Step 1: Call hotel search API
+    // const searchPayload = {
+    //   checkin: "2025-10-05",
+    //   checkout: "2025-10-06",
+    //   residency: "gb",
+    //   language: "en",
+    //   guests: [
+    //     {
+    //       adults: 2,
+    //       children: [],
+    //     },
+    //   ],
+    //   id: "test_hotel_do_not_book",
+    //   currency: "EUR",
+    // };
 
-    const searchResponse = await api.post("search/hp/", searchPayload);
+    // const searchResponse = await api.post("search/hp/", searchPayload);
 
-    // Ensure book_hash exists
-    const hotelResults = searchResponse.data.data.hotels[0].rates[0];
-    console.log("🚀 ~ createBookingForm ~ hotelResults:", hotelResults);
-    const bookHash = hotelResults?.book_hash;
-    if (!bookHash) {
-      return res.status(400).json({
-        message: "❌ No book_hash found in search response",
-        results: hotelResults,
-      });
-    }
+    // // Ensure book_hash exists
+    // const hotelResults = searchResponse.data.data.hotels[0].rates[0];
+    // console.log("🚀 ~ createBookingForm ~ hotelResults:", hotelResults);
+    // const bookHash = hotelResults?.book_hash;
+    // console.log(bookHash)
+    // if (!bookHash) {
+    //   return res.status(400).json({
+    //     message: "❌ No book_hash found in search response",
+    //     results: hotelResults,
+    //   });
+    // }
 
     // 2️⃣ Step 2: Call booking form API
+    const book_hash = "h-48eb6527-778e-5f64-91c9-b03065f9cc1e";
     const bookingPayload = {
       partner_order_id: `partner-${uuidv4()}`, // unique ID
-      book_hash: bookHash,
+      book_hash: book_hash,
       language: "en",
       user_ip: req.ip || "127.0.0.1",
     };
 
+    console.log(bookingPayload);
     const bookingResponse = await api.post(
       "hotel/order/booking/form/",
       bookingPayload
@@ -60,7 +66,7 @@ export const createBookingForm = async (req, res) => {
     res.json({
       message: "✅ Booking form created successfully",
       data: {
-        hotelDetails: hotelResults,
+        hotelDetails: hotelData,
         bookingForm: bookingResponse.data,
       },
     });
@@ -78,7 +84,9 @@ export const createBookingForm = async (req, res) => {
 
 export const getCountries = async (req, res) => {
   try {
-    const countries = await api.get("https://www.ratehawk.com/api/v3/site/accounts/countries/");
+    const countries = await api.get(
+      "https://www.ratehawk.com/api/v3/site/accounts/countries/"
+    );
     res.json(countries.data);
   } catch (error) {
     console.error("💥 Get countries error:", error);
