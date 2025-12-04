@@ -149,10 +149,10 @@ router.get("/hotel/details-t", async (req, res) => {
 });
 
 router.post("/hotel/details", async (req, res) => {
-  const { hotel_id } = req.query;
+  // const { hotel_id } = req.query;
   const { hotelId, searchContext, residency, currency } = req.body;
   console.log(hotelId, searchContext, residency, currency);
-  console.log("🚀 ~ hotel_id:", hotel_id);
+  console.log("🚀 ~ hotel_id:", hotelId);
 
   const checkin = searchContext.checkin;
   console.log("🚀 ~ checkin:", checkin);
@@ -176,7 +176,7 @@ router.post("/hotel/details", async (req, res) => {
         children: [],
       },
     ],
-    id: hotel_id,
+    id: hotelId,
     currency: currency,
   };
 
