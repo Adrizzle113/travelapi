@@ -13,6 +13,7 @@ import ratehawkRoutes from "./routes/ratehawk.js";
 import { loginUserToRateHawk } from "./services/ratehawkLoginService.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import { BookingFormCreationRoute } from "./src/routes/createBookingFormRoutes.js";
+import DestinationRoute from "./src/routes/destinationRoute.js";
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -139,6 +140,7 @@ app.use("/api/ratehawk", ratehawkRoutes);
 app.use("/api/hotels", ratehawkRoutes); // Alias for compatibility
 app.use("/api/user", userRoutes);
 app.use("/api", BookingFormCreationRoute);
+app.use("/api", DestinationRoute);
 
 // Explicit OPTIONS handler for health endpoint (must come before GET handler)
 app.options("/api/health", (req, res) => {
