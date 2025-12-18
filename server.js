@@ -24,6 +24,7 @@ global.userSessions = new Map();
 // CORS configuration - allow requests from frontend
 const allowedOrigins = [
   "http://localhost:8080",
+  "https://bookja.vercel.app",
   "https://travel-frontend-two-nu.vercel.app",
   "http://localhost:8081",
   "http://127.0.0.1:8080",
