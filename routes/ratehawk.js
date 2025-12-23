@@ -201,6 +201,14 @@ router.post("/hotel/details", async (req, res) => {
   });
 });
 
+// SIMPLE TEST - REMOVE AFTER TESTING
+router.get("/test-simple", (req, res) => {
+  res.json({ 
+    message: "Simple test works!",
+    timestamp: new Date().toISOString()
+  });
+});
+
 // ================================
 // HOTEL STATIC INFO ENDPOINT (NEW!)
 // Fetches descriptions, amenities, policies from RateHawk
