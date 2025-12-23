@@ -447,15 +447,6 @@ router.post("/hotel/static-info", async (req, res) => {
     console.log(`   Check-in: ${extractedInfo.checkInTime || 'Not found'}`);
     console.log(`   Check-out: ${extractedInfo.checkOutTime || 'Not found'}`);
     console.log(`   Policies: ${extractedInfo.policies.length} items`);
-    console.log(`   Am
-    
-    // Log what we found
-    console.log(`✅ Static info extraction completed in ${duration}ms`);
-    console.log(`   Source: ${successEndpoint}`);
-    console.log(`   Description: ${extractedInfo.description ? `${extractedInfo.description.length} chars` : 'Not found'}`);
-    console.log(`   Check-in: ${extractedInfo.checkInTime || 'Not found'}`);
-    console.log(`   Check-out: ${extractedInfo.checkOutTime || 'Not found'}`);
-    console.log(`   Policies: ${extractedInfo.policies.length} items`);
     console.log(`   Amenities: ${extractedInfo.amenities.length} items`);
     console.log(`   Coordinates: ${extractedInfo.coordinates.latitude && extractedInfo.coordinates.longitude ? 'Found' : 'Not found'}`);
 
