@@ -7,7 +7,7 @@ import { initializeDatabase } from "./config/database.js";
 
 // Import routes
 import authRoutes from "./routes/auth.js";
-import ratehawkRoutes from "./routes/ratehawk.js";
+import ratehawkRoutes from "./routes/ratehawk/index.js";
 
 // Import services
 import { loginUserToRateHawk } from "./services/ratehawkLoginService.js";
