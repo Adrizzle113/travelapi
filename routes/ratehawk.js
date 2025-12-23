@@ -201,6 +201,291 @@ router.post("/hotel/details", async (req, res) => {
   });
 });
 
+// ================================
+// HOTEL STATIC INFO ENDPOINT (NEW!)
+// Fetches descriptions, amenities, policies from RateHawk
+// ================================
+router.post("/hotel/static-info", async (req, res) => {
+  const startTime = Date.now();
+  const { hotelId, residency = "en-us" } = req.body;
+
+  console.log("📚 === HOTEL STATIC INFO REQUEST ===");
+  console.log(`🏨 Hotel ID: ${hotelId}`);
+  console.log(`🌍 Residency: ${residency}`);
+  console.log(`🕒 Timestamp: ${new Date().toISOString()}`);
+
+  // Validation
+  if (!hotelId) {
+    return res.status(400).json({
+      success: false,
+      error: "Hotel ID is required",
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  try {
+    // Try multiple RateHawk endpoints for static hotel data
+    const endpoints = [
+      // Worldota API (RateHawk backend)
+      {
+        name: "Worldota API v3",
+        url: `https://api.worldota.net/api/b2b/v3/hotel/info/${hotelId}/?language=en`,
+        method: "GET",
+      },
+      {
+        name: "Worldota API v3 (query param)",
+        url: `https://api.worldota.net/api/b2b/v3/hotel/info/?hotel_id=${hotelId}&language=en`,
+        method: "GET",
+      },
+      // RateHawk web interface endpoints
+      {
+        name: "RateHawk Hotel Info",
+        url: `https://www.ratehawk.com/hotel/info/${hotelId}?residency=${residency}`,
+        method: "GET",
+      },
+      {
+        name: "RateHawk Hotel Info (alt)",
+        url: `https://www.ratehawk.com/api/hotel/info?hotel_id=${hotelId}&residency=${residency}`,
+        method: "GET",
+      },
+    ];
+
+    let staticData = null;
+    let successEndpoint = null;
+    let lastError = null;
+
+    // Try each endpoint
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`🔍 Trying: ${endpoint.name}`);
+        console.log(`   URL: ${endpoint.url}`);
+        
+        const response = await fetch(endpoint.url, {
+          method: endpoint.method,
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+        });
+
+        console.log(`   Status: ${response.status}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ Success with ${endpoint.name}`);
+          console.log(`   Response keys:`, Object.keys(data));
+          
+          // Check if response has useful data
+          const hasDescription = !!(
+            data.description || 
+            data.hotel_description || 
+            data.data?.description ||
+            data.hotel?.description
+          );
+          
+          if (hasDescription || Object.keys(data).length > 3) {
+            staticData = data;
+            successEndpoint = endpoint.name;
+            console.log(`✅ Found useful static data in ${endpoint.name}`);
+            break;
+          } else {
+            console.log(`⚠️ Response from ${endpoint.name} doesn't contain useful data`);
+          }
+        } else if (response.status === 404) {
+          console.log(`   404 - Hotel not found or endpoint doesn't exist`);
+        } else if (response.status === 401 || response.status === 403) {
+          console.log(`   ${response.status} - Authentication required`);
+        } else {
+          console.log(`   ${response.status} - ${response.statusText}`);
+        }
+      } catch (fetchError) {
+        console.log(`   ❌ Error: ${fetchError.message}`);
+        lastError = fetchError;
+        continue;
+      }
+    }
+
+    // If we couldn't get static data from any endpoint
+    if (!staticData) {
+      const duration = Date.now() - startTime;
+      console.log(`⚠️ Could not fetch static info from any endpoint (${duration}ms)`);
+      
+      return res.status(404).json({
+        success: false,
+        error: "Hotel static information not available from RateHawk API",
+        message: "The hotel exists but detailed information is not accessible. This is common for some properties.",
+        attemptedEndpoints: endpoints.length,
+        lastError: lastError?.message,
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`,
+      });
+    }
+
+    // Extract and normalize data from various possible response structures
+    const extractedInfo = {
+      // Description - check multiple possible locations
+      description: 
+        staticData.description || 
+        staticData.hotel_description || 
+        staticData.data?.description ||
+        staticData.hotel?.description ||
+        staticData.data?.hotel?.description ||
+        null,
+      
+      fullDescription: 
+        staticData.full_description || 
+        staticData.detailed_description ||
+        staticData.data?.full_description ||
+        staticData.hotel?.full_description ||
+        null,
+      
+      // Times
+      checkInTime: 
+        staticData.check_in_time || 
+        staticData.checkin_time ||
+        staticData.data?.check_in_time ||
+        staticData.hotel?.check_in_time ||
+        null,
+      
+      checkOutTime: 
+        staticData.check_out_time || 
+        staticData.checkout_time ||
+        staticData.data?.check_out_time ||
+        staticData.hotel?.check_out_time ||
+        null,
+      
+      // Policies - handle both array and string
+      policies: (() => {
+        const policies = 
+          staticData.policies || 
+          staticData.hotel_policies ||
+          staticData.data?.policies ||
+          staticData.hotel?.policies ||
+          [];
+        
+        return Array.isArray(policies) ? policies : (policies ? [policies] : []);
+      })(),
+      
+      // Amenities
+      amenities: 
+        staticData.amenities || 
+        staticData.facilities ||
+        staticData.data?.amenities ||
+        staticData.hotel?.amenities ||
+        [],
+      
+      // Facts (additional info)
+      facts: 
+        staticData.facts || 
+        staticData.hotel_facts ||
+        staticData.data?.facts ||
+        staticData.hotel?.facts ||
+        {},
+      
+      // Address
+      address: 
+        staticData.address || 
+        staticData.data?.address ||
+        staticData.hotel?.address ||
+        null,
+      
+      // Coordinates
+      coordinates: {
+        latitude: 
+          staticData.latitude || 
+          staticData.lat || 
+          staticData.data?.latitude ||
+          staticData.hotel?.latitude ||
+          null,
+        longitude: 
+          staticData.longitude || 
+          staticData.lon || 
+          staticData.data?.longitude ||
+          staticData.hotel?.longitude ||
+          null,
+      },
+      
+      // Contact
+      phone: 
+        staticData.phone || 
+        staticData.telephone ||
+        staticData.data?.phone ||
+        staticData.hotel?.phone ||
+        null,
+      
+      email: 
+        staticData.email || 
+        staticData.data?.email ||
+        staticData.hotel?.email ||
+        null,
+      
+      // Rating
+      starRating: 
+        staticData.star_rating || 
+        staticData.stars ||
+        staticData.data?.star_rating ||
+        staticData.hotel?.star_rating ||
+        null,
+      
+      // Images
+      images: 
+        staticData.images || 
+        staticData.photos ||
+        staticData.data?.images ||
+        staticData.hotel?.images ||
+        [],
+    };
+
+    const duration = Date.now() - startTime;
+    
+    // Log what we found
+    console.log(`✅ Static info extraction completed in ${duration}ms`);
+    console.log(`   Source: ${successEndpoint}`);
+    console.log(`   Description: ${extractedInfo.description ? `${extractedInfo.description.length} chars` : 'Not found'}`);
+    console.log(`   Check-in: ${extractedInfo.checkInTime || 'Not found'}`);
+    console.log(`   Check-out: ${extractedInfo.checkOutTime || 'Not found'}`);
+    console.log(`   Policies: ${extractedInfo.policies.length} items`);
+    console.log(`   Amenities: ${extractedInfo.amenities.length} items`);
+    console.log(`   Coordinates: ${extractedInfo.coordinates.latitude && extractedInfo.coordinates.longitude ? 'Found' : 'Not found'}`);
+
+    // Return success response
+    res.json({
+      success: true,
+      data: extractedInfo,
+      metadata: {
+        source: successEndpoint,
+        hotelId: hotelId,
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`,
+        dataQuality: {
+          hasDescription: !!extractedInfo.description,
+          hasCheckInTime: !!extractedInfo.checkInTime,
+          hasCheckOutTime: !!extractedInfo.checkOutTime,
+          policiesCount: extractedInfo.policies.length,
+          amenitiesCount: extractedInfo.amenities.length,
+          hasCoordinates: !!(extractedInfo.coordinates.latitude && extractedInfo.coordinates.longitude),
+        }
+      },
+      // Include raw data for debugging in development
+      rawData: process.env.NODE_ENV === 'development' ? staticData : undefined,
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error("💥 Static info fetch error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: `Failed to fetch static info: ${error.message}`,
+      hotelId: hotelId,
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`,
+    });
+  }
+});
+
 // Login to RateHawk
 router.post("/login", async (req, res) => {
   const startTime = Date.now();
