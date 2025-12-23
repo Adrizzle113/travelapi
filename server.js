@@ -321,7 +321,7 @@ app.use("*", (req, res) => {
       health: "GET /api/health",
       test: "GET /api/test",
       auth: "POST /api/auth/login, POST /api/auth/register",
-      ratehawk: "POST /api/ratehawk/login, POST /api/ratehawk/search",
+      ratehawk: "POST /api/ratehawk/login, POST /api/ratehawk/search, POST /api/ratehawk/hotel/static-info",
       sessions: "GET /api/sessions, POST /api/cleanup-sessions",
     },
   });

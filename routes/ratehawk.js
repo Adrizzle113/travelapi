@@ -149,7 +149,6 @@ router.get("/hotel/details-t", async (req, res) => {
 });
 
 router.post("/hotel/details", async (req, res) => {
-  // const { hotel_id } = req.query;
   const { hotelId, searchContext, residency, currency } = req.body;
   console.log(hotelId, searchContext, residency, currency);
   console.log("🚀 ~ hotel_id:", hotelId);
@@ -200,6 +199,227 @@ router.post("/hotel/details", async (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// ================================
+// HOTEL STATIC INFO ENDPOINT (FIXED!)
+// Fetches descriptions, amenities, policies from RateHawk
+// Uses correct Basic Auth API
+// ================================
+router.post("/hotel/static-info", async (req, res) => {
+  const startTime = Date.now();
+  const { hotelId, language = "en" } = req.body;
+
+  console.log("📚 === HOTEL STATIC INFO REQUEST ===");
+  console.log(`🏨 Hotel ID: ${hotelId}`);
+  console.log(`🌍 Language: ${language}`);
+  console.log(`🕒 Timestamp: ${new Date().toISOString()}`);
+
+  if (!hotelId) {
+    return res.status(400).json({
+      success: false,
+      error: "Hotel ID is required",
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  try {
+    console.log("🔍 Calling RateHawk API: https://api.worldota.net/api/b2b/v3/hotel/info/");
+    
+    // Use the RateHawk API with Basic Auth (same credentials as /hotel/details)
+    const result = await axios.post(
+      "https://api.worldota.net/api/b2b/v3/hotel/info/",
+      {
+        id: hotelId,  // Alphabetic hotel ID
+        language: language
+      },
+      {
+        auth: {
+          username: "11606",
+          password: "ff9702bb-ba93-4996-a31e-547983c51530",
+        },
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "BookjaAPI/1.0",
+        },
+      }
+    );
+
+    const duration = Date.now() - startTime;
+
+    // Check if we got data
+    if (!result.data || !result.data.data) {
+      console.log("⚠️ No data returned from hotel/info endpoint");
+      return res.status(404).json({
+        success: false,
+        error: "Hotel static information not available",
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`,
+      });
+    }
+
+    const hotelData = result.data.data;
+    console.log("✅ Received hotel data from API");
+    console.log(`   Hotel name: ${hotelData.name || 'Unknown'}`);
+    console.log(`   Has description_struct: ${!!hotelData.description_struct}`);
+    console.log(`   Has amenity_groups: ${!!hotelData.amenity_groups}`);
+
+    // Extract the fields we need
+    const extractedInfo = {
+      description: extractDescription(hotelData.description_struct),
+      checkInTime: hotelData.check_in_time || null,
+      checkOutTime: hotelData.check_out_time || null,
+      address: hotelData.address || null,
+      email: hotelData.email || null,
+      phone: hotelData.phone || null,
+      name: hotelData.name || null,
+      starRating: hotelData.star_rating || null,
+      coordinates: {
+        latitude: hotelData.latitude || null,
+        longitude: hotelData.longitude || null,
+      },
+      amenities: extractAmenities(hotelData.amenity_groups),
+      policies: extractPolicies(hotelData.policy_struct),
+      images: hotelData.images || [],
+      roomGroups: hotelData.room_groups || [],
+      facts: hotelData.facts || {},
+      kind: hotelData.kind || null,
+      metapolicyExtraInfo: hotelData.metapolicy_extra_info || null,
+    };
+
+    console.log(`✅ Static info extraction completed in ${duration}ms`);
+    console.log(`   Description: ${extractedInfo.description ? `${extractedInfo.description.length} chars` : 'Not found'}`);
+    console.log(`   Check-in: ${extractedInfo.checkInTime || 'Not found'}`);
+    console.log(`   Check-out: ${extractedInfo.checkOutTime || 'Not found'}`);
+    console.log(`   Amenities: ${extractedInfo.amenities.length} items`);
+    console.log(`   Policies: ${extractedInfo.policies.length} sections`);
+    console.log(`   Images: ${extractedInfo.images.length} images`);
+
+    res.json({
+      success: true,
+      data: extractedInfo,
+      metadata: {
+        source: "RateHawk API v3 - hotel/info",
+        hotelId: hotelId,
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`,
+        dataQuality: {
+          hasDescription: !!extractedInfo.description,
+          hasCheckInTime: !!extractedInfo.checkInTime,
+          hasCheckOutTime: !!extractedInfo.checkOutTime,
+          policiesCount: extractedInfo.policies.length,
+          amenitiesCount: extractedInfo.amenities.length,
+          hasCoordinates: !!(extractedInfo.coordinates.latitude && extractedInfo.coordinates.longitude),
+          imagesCount: extractedInfo.images.length,
+        }
+      },
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error("💥 Static info fetch error:", error.message);
+
+    // Check for specific error types
+    if (error.response) {
+      console.error(`   Status: ${error.response.status}`);
+      console.error(`   Error:`, error.response.data?.error || 'Unknown');
+      
+      if (error.response.status === 404 || error.response.data?.error === 'hotel_not_found') {
+        return res.status(404).json({
+          success: false,
+          error: "Hotel not found in RateHawk database",
+          message: "This hotel may not be available in the ETG inventory yet.",
+          hotelId: hotelId,
+          timestamp: new Date().toISOString(),
+          duration: `${duration}ms`,
+        });
+      }
+      
+      if (error.response.status === 401 || error.response.status === 403) {
+        return res.status(401).json({
+          success: false,
+          error: "Authentication failed",
+          message: "Invalid API credentials",
+          timestamp: new Date().toISOString(),
+          duration: `${duration}ms`,
+        });
+      }
+    }
+
+    res.status(500).json({
+      success: false,
+      error: `Failed to fetch static info: ${error.message}`,
+      hotelId: hotelId,
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`,
+    });
+  }
+});
+
+// ================================
+// HELPER FUNCTIONS FOR STATIC INFO
+// ================================
+
+/**
+ * Extract description from RateHawk's description_struct format
+ * Combines all paragraphs into a single text
+ */
+function extractDescription(descriptionStruct) {
+  if (!descriptionStruct || !Array.isArray(descriptionStruct)) {
+    return null;
+  }
+  
+  const sections = descriptionStruct
+    .map(section => {
+      if (section.paragraphs && Array.isArray(section.paragraphs)) {
+        return section.paragraphs.join(' ');
+      }
+      return '';
+    })
+    .filter(Boolean);
+  
+  return sections.length > 0 ? sections.join(' ') : null;
+}
+
+/**
+ * Extract amenities from amenity_groups format
+ * Returns flat array of all amenity names
+ */
+function extractAmenities(amenityGroups) {
+  if (!amenityGroups || !Array.isArray(amenityGroups)) {
+    return [];
+  }
+  
+  const allAmenities = [];
+  amenityGroups.forEach(group => {
+    if (group.amenities && Array.isArray(group.amenities)) {
+      allAmenities.push(...group.amenities);
+    }
+  });
+  
+  return allAmenities;
+}
+
+/**
+ * Extract policies from policy_struct format
+ * Returns array of policy objects with title and content
+ */
+function extractPolicies(policyStruct) {
+  if (!policyStruct || !Array.isArray(policyStruct)) {
+    return [];
+  }
+  
+  const policies = policyStruct.map(policy => {
+    if (policy.title && policy.paragraphs) {
+      return {
+        title: policy.title,
+        content: Array.isArray(policy.paragraphs) ? policy.paragraphs.join(' ') : String(policy.paragraphs)
+      };
+    }
+    return null;
+  }).filter(Boolean);
+  
+  return policies;
+}
 
 // Login to RateHawk
 router.post("/login", async (req, res) => {
@@ -528,19 +748,6 @@ router.post("/hotel-details", async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Hotel details error:", error);
-
-    console.log(
-      "Raw RateHawk API response ========:",
-      JSON.stringify(detailsResult, null, 2)
-    );
-    console.log(
-      "Extracted room_groups ============:",
-      detailsResult.room_groups?.length || 0
-    );
-    console.log(
-      "Extracted rates   ================:",
-      detailsResult.rates?.length || 0
-    );
 
     res.status(500).json({
       success: false,
