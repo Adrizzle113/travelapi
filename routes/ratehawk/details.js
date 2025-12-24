@@ -1,6 +1,7 @@
 /**
  * RateHawk Hotel Details Routes
  * Handles fetching detailed hotel information and rates
+ * FIXED VERSION - Better error handling and parameter validation
  */
 
 import express from "express";
@@ -126,30 +127,56 @@ router.get("/hotel/details-t", async (req, res) => {
 });
 
 // ================================
-// HOTEL DETAILS (Current Method - Worldota API)
+// HOTEL DETAILS (Current Method - Worldota API) - FIXED
 // ================================
 
 router.post("/hotel/details", async (req, res) => {
+  const startTime = Date.now();
   const { hotelId, searchContext, residency, currency } = req.body;
   
-  console.log("🚀 ~ hotel_id:", hotelId);
-  console.log("🚀 ~ checkin:", searchContext?.checkin);
+  console.log("🏨 === HOTEL DETAILS REQUEST (WORLDOTA API) ===");
+  console.log(`🏨 Hotel ID: ${hotelId}`);
+  console.log(`📅 Check-in: ${searchContext?.checkin}`);
+  console.log(`📅 Check-out: ${searchContext?.checkout}`);
+  console.log(`👥 Guests:`, JSON.stringify(searchContext?.guests));
+  console.log(`🌍 Residency: ${residency}`);
+  console.log(`💰 Currency: ${currency}`);
 
   if (!hotelId || !searchContext?.checkin || !searchContext?.checkout || !searchContext?.guests) {
     return res.status(400).json({ 
-      error: "Hotel ID and searchContext are required" 
+      error: "Hotel ID, checkin, checkout, and guests are required",
+      timestamp: new Date().toISOString(),
     });
   }
 
+  // Validate dates aren't too close
+  const checkinDate = new Date(searchContext.checkin);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  checkinDate.setHours(0, 0, 0, 0);
+  
+  const daysUntilCheckin = Math.floor((checkinDate - today) / (1000 * 60 * 60 * 24));
+  
+  if (daysUntilCheckin < 1) {
+    console.warn(`⚠️ Check-in date is in the past or today (${daysUntilCheckin} days)`);
+    return res.status(400).json({
+      error: "Check-in date must be at least tomorrow",
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Build request - try different residency formats
   const reqData = {
     checkin: searchContext.checkin,
     checkout: searchContext.checkout,
-    residency: residency || "gb",
+    residency: residency?.replace('en-', '') || "us",  // Convert "en-us" to "us"
     language: "en",
     guests: searchContext.guests || [{ adults: 2, children: [] }],
     id: hotelId,
     currency: currency || "USD",
   };
+
+  console.log("📤 Sending to RateHawk:", JSON.stringify(reqData, null, 2));
 
   try {
     const result = await axios.post(
@@ -160,18 +187,65 @@ router.post("/hotel/details", async (req, res) => {
         headers: {
           "Content-Type": "application/json",
         },
+        timeout: 30000, // 30 second timeout
       }
     );
 
+    const duration = Date.now() - startTime;
+    console.log(`✅ Hotel details fetched in ${duration}ms`);
+    console.log(`📊 Response status: ${result.data?.status}`);
+    
+    if (result.data?.data) {
+      const hotelData = result.data.data;
+      console.log(`🏨 Hotel: ${hotelData.hotel?.name || 'Unknown'}`);
+      console.log(`📦 Room groups: ${hotelData.hotel?.room_groups?.length || 0}`);
+      console.log(`💰 Rates: ${hotelData.hotel?.rates?.length || 0}`);
+    }
+
     res.json({
-      message: "Hotel details endpoint is working",
+      success: true,
+      message: "Hotel details fetched successfully",
       data: result.data || {},
+      duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("💥 Hotel details error:", error);
+    const duration = Date.now() - startTime;
+    console.error("💥 Hotel details error:", error.message);
+    
+    // Log the actual error from RateHawk
+    if (error.response) {
+      console.error(`❌ RateHawk API Error:`);
+      console.error(`   Status: ${error.response.status}`);
+      console.error(`   Error:`, JSON.stringify(error.response.data, null, 2));
+      console.error(`   Rate limit remaining: ${error.response.headers['x-ratelimit-remaining']}`);
+      
+      // Return helpful error message
+      const ratehawkError = error.response.data;
+      
+      if (ratehawkError.error === 'invalid_params') {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid search parameters",
+          details: "RateHawk rejected the search parameters. This may be due to:",
+          suggestions: [
+            "Check-in date too soon (try dates 3+ days in future)",
+            "Invalid hotel ID format",
+            "Invalid residency code",
+            "Missing or invalid guest configuration"
+          ],
+          requestData: reqData,
+          ratehawkError: ratehawkError,
+          duration: `${duration}ms`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+    
     res.status(500).json({
+      success: false,
       error: `Failed to fetch hotel details: ${error.message}`,
+      duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     });
   }
