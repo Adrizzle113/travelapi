@@ -7,14 +7,13 @@ import { initializeDatabase } from "./config/database.js";
 // Import routes
 import authRoutes from "./routes/auth.js";
 import ratehawkRoutes from "./routes/ratehawk/index.js";
-// ⚠️ REMOVED: import { initializePOICache } from "./routes/ratehawk/poi.js";
-// Mapbox POI doesn't need initialization - it works on-demand!
 
 // Import services
 import { loginUserToRateHawk } from "./services/ratehawkLoginService.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import { BookingFormCreationRoute } from "./src/routes/createBookingFormRoutes.js";
 import DestinationRoute from "./src/routes/destinationRoute.js";
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -208,7 +207,6 @@ app.get("/api/health", (req, res) => {
       database: "connected",
       browserless: process.env.BROWSERLESS_TOKEN ? "configured" : "not_configured",
       ratehawk: "operational",
-      poi: "mapbox", // Using Mapbox (on-demand)
     },
     activeSessions: global.userSessions.size,
     endpoints: {
@@ -330,7 +328,6 @@ app.use("*", (req, res) => {
       test: "GET /api/test",
       auth: "POST /api/auth/login, POST /api/auth/register",
       ratehawk: "POST /api/ratehawk/login, POST /api/ratehawk/search, POST /api/ratehawk/hotel/static-info",
-      poi: "GET /api/ratehawk/hotel/:hotelId/poi (Mapbox)",
       sessions: "GET /api/sessions, POST /api/cleanup-sessions",
     },
   });
@@ -366,13 +363,8 @@ async function startServer() {
       console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`);
       console.log(`🔐 Auth routes: http://localhost:${PORT}/api/auth/*`);
       console.log(`🏨 RateHawk routes: http://localhost:${PORT}/api/ratehawk/*`);
-      console.log(`🗺️  POI: Mapbox API (on-demand)`);
       console.log(`🌍 Browserless: ${process.env.BROWSERLESS_TOKEN ? "✅ Configured" : "❌ Not configured"}`);
       console.log("===============================");
-      
-      // ⚠️ REMOVED POI INITIALIZATION
-      // Mapbox POI works on-demand when endpoint is called
-      // No need to pre-load anything!
     });
 
     setInterval(() => {
