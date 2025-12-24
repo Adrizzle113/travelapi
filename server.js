@@ -8,6 +8,7 @@ import { initializeDatabase } from "./config/database.js";
 // Import routes
 import authRoutes from "./routes/auth.js";
 import ratehawkRoutes from "./routes/ratehawk/index.js";
+import { initializePOICache } from "./routes/ratehawk/poi.js"; // ✅ NEW: Add POI import
 
 // Import services
 import { loginUserToRateHawk } from "./services/ratehawkLoginService.js";
@@ -31,6 +32,8 @@ const allowedOrigins = [
   "http://127.0.0.1:8081",
   "http://localhost:3000",
   "https://lovable.dev",
+  /^https:\/\/.*\.lovable\.app$/,            // ✅ NEW: All Lovable domains
+  /^https:\/\/id-preview--.*\.lovable\.app$/ // ✅ NEW: Lovable ID previews
 ];
 
 const corsOptions = {
@@ -55,8 +58,16 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
+    // ✅ UPDATED: Check if origin is in allowed list (including RegExp patterns)
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return origin === allowed;
+      }
+      // RegExp check for pattern matching
+      return allowed.test(origin);
+    });
+
+    if (isAllowed) {
       console.log(`✅ Allowing origin from list: ${origin}`);
       callback(null, true);
     } else {
@@ -109,7 +120,15 @@ app.options("*", (req, res) => {
     return res.status(204).send();
   }
 
-  if (allowedOrigins.includes(origin) || origin === "https://travel-frontend-two-nu.vercel.app") {
+  // ✅ UPDATED: Check with RegExp support
+  const isAllowed = allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') {
+      return origin === allowed;
+    }
+    return allowed.test(origin);
+  });
+
+  if (isAllowed || origin === "https://travel-frontend-two-nu.vercel.app") {
     // When credentials is true, we MUST return the specific origin, not *
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
@@ -156,7 +175,15 @@ app.options("/api/health", (req, res) => {
     return res.status(204).send();
   }
 
-  if (allowedOrigins.includes(origin) || origin === "https://travel-frontend-two-nu.vercel.app") {
+  // ✅ UPDATED: Check with RegExp support
+  const isAllowed = allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') {
+      return origin === allowed;
+    }
+    return allowed.test(origin);
+  });
+
+  if (isAllowed || origin === "https://travel-frontend-two-nu.vercel.app") {
     // When credentials is true, we MUST return the specific origin, not *
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -176,10 +203,19 @@ app.get("/api/health", (req, res) => {
   const origin = req.headers.origin;
   console.log(`📊 GET /api/health request from: ${origin}`);
 
-  // Set CORS headers explicitly
-  if (origin && (allowedOrigins.includes(origin) || origin === "https://travel-frontend-two-nu.vercel.app")) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Access-Control-Allow-Credentials", "true");
+  // ✅ UPDATED: Set CORS headers with RegExp support
+  if (origin) {
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return origin === allowed;
+      }
+      return allowed.test(origin);
+    });
+
+    if (isAllowed || origin === "https://travel-frontend-two-nu.vercel.app") {
+      res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+    }
   }
 
   res.json({
@@ -355,7 +391,7 @@ async function startServer() {
     await initializeDatabase();
 
     // Start HTTP server
-    app.listen(PORT, () => {
+    app.listen(PORT, async () => { // ✅ UPDATED: Added 'async'
       console.log("🚀 ===== SERVER STARTED =====");
       console.log(`📡 Server running on port ${PORT}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
@@ -369,6 +405,17 @@ async function startServer() {
         }`
       );
       console.log("===============================");
+
+      // ✅ NEW: Initialize POI cache
+      console.log("");
+      console.log("🔄 Starting POI cache initialization...");
+      console.log("⚠️ This will take 30-60 seconds on first startup");
+      console.log("🌐 Server is ready to accept requests");
+      
+      initializePOICache().catch(error => {
+        console.error("❌ POI initialization failed (non-fatal):", error.message);
+        console.log("💡 Server will continue without POI data");
+      });
     });
 
     // Session cleanup interval (every hour)
