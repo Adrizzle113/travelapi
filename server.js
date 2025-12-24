@@ -1,14 +1,14 @@
 import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
-// const cors = require("cors");
 import cors from "cors";
 import { initializeDatabase } from "./config/database.js";
 
 // Import routes
 import authRoutes from "./routes/auth.js";
 import ratehawkRoutes from "./routes/ratehawk/index.js";
-import { initializePOICache } from "./routes/ratehawk/poi.js"; // ✅ NEW: Add POI import
+// ⚠️ REMOVED: import { initializePOICache } from "./routes/ratehawk/poi.js";
+// Mapbox POI doesn't need initialization - it works on-demand!
 
 // Import services
 import { loginUserToRateHawk } from "./services/ratehawkLoginService.js";
@@ -32,22 +32,19 @@ const allowedOrigins = [
   "http://127.0.0.1:8081",
   "http://localhost:3000",
   "https://lovable.dev",
-  /^https:\/\/.*\.lovable\.app$/,            // ✅ NEW: All Lovable domains
-  /^https:\/\/id-preview--.*\.lovable\.app$/ // ✅ NEW: Lovable ID previews
+  /^https:\/\/.*\.lovable\.app$/,
+  /^https:\/\/id-preview--.*\.lovable\.app$/
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Log the incoming origin for debugging
     console.log(`🌐 CORS request from origin: ${origin || "no origin"}`);
 
-    // Allow requests with no origin (like mobile apps, curl, or same-origin requests)
     if (!origin) {
       console.log("✅ Allowing request with no origin");
       return callback(null, true);
     }
 
-    // Allow all localhost and 127.0.0.1 origins for development
     if (
       origin.startsWith("http://localhost:") ||
       origin.startsWith("http://127.0.0.1:") ||
@@ -58,12 +55,10 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // ✅ UPDATED: Check if origin is in allowed list (including RegExp patterns)
     const isAllowed = allowedOrigins.some(allowed => {
       if (typeof allowed === 'string') {
         return origin === allowed;
       }
-      // RegExp check for pattern matching
       return allowed.test(origin);
     });
 
@@ -72,7 +67,6 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.log(`⚠️ CORS blocked origin: ${origin}`);
-      // For production, allow the frontend origin even if not in strict list
       if (origin === "https://travel-frontend-two-nu.vercel.app") {
         console.log(`✅ Allowing frontend origin: ${origin}`);
         callback(null, true);
@@ -101,26 +95,21 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-// Apply CORS middleware FIRST - before any routes
 app.use(cors(corsOptions));
 
-// Handle preflight OPTIONS requests explicitly for all routes
 app.options("*", (req, res) => {
   const origin = req.headers.origin;
   console.log(`🔄 Handling OPTIONS preflight request from: ${origin}`);
 
-  // Check if origin is allowed
   if (!origin) {
-    // No origin header - allow it (for same-origin requests, mobile apps, etc.)
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
-    res.header("Access-Control-Max-Age", "86400"); // 24 hours
+    res.header("Access-Control-Max-Age", "86400");
     console.log(`✅ OPTIONS preflight approved (no origin)`);
     return res.status(204).send();
   }
 
-  // ✅ UPDATED: Check with RegExp support
   const isAllowed = allowedOrigins.some(allowed => {
     if (typeof allowed === 'string') {
       return origin === allowed;
@@ -129,12 +118,11 @@ app.options("*", (req, res) => {
   });
 
   if (isAllowed || origin === "https://travel-frontend-two-nu.vercel.app") {
-    // When credentials is true, we MUST return the specific origin, not *
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
     res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Max-Age", "86400"); // 24 hours
+    res.header("Access-Control-Max-Age", "86400");
     console.log(`✅ OPTIONS preflight approved for: ${origin}`);
     return res.status(204).send();
   } else {
@@ -143,11 +131,9 @@ app.options("*", (req, res) => {
   }
 });
 
-// Body parsing
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Simple logging middleware
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
   console.log(`${timestamp} ${req.method} ${req.url}`);
@@ -157,12 +143,11 @@ app.use((req, res, next) => {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/ratehawk", ratehawkRoutes);
-app.use("/api/hotels", ratehawkRoutes); // Alias for compatibility
+app.use("/api/hotels", ratehawkRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api", BookingFormCreationRoute);
 app.use("/api", DestinationRoute);
 
-// Explicit OPTIONS handler for health endpoint (must come before GET handler)
 app.options("/api/health", (req, res) => {
   const origin = req.headers.origin;
   console.log(`🔄 Handling OPTIONS for /api/health from: ${origin}`);
@@ -175,7 +160,6 @@ app.options("/api/health", (req, res) => {
     return res.status(204).send();
   }
 
-  // ✅ UPDATED: Check with RegExp support
   const isAllowed = allowedOrigins.some(allowed => {
     if (typeof allowed === 'string') {
       return origin === allowed;
@@ -184,7 +168,6 @@ app.options("/api/health", (req, res) => {
   });
 
   if (isAllowed || origin === "https://travel-frontend-two-nu.vercel.app") {
-    // When credentials is true, we MUST return the specific origin, not *
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
@@ -198,12 +181,10 @@ app.options("/api/health", (req, res) => {
   res.status(403).json({ error: "CORS preflight failed" });
 });
 
-// Health check endpoint with explicit CORS headers
 app.get("/api/health", (req, res) => {
   const origin = req.headers.origin;
   console.log(`📊 GET /api/health request from: ${origin}`);
 
-  // ✅ UPDATED: Set CORS headers with RegExp support
   if (origin) {
     const isAllowed = allowedOrigins.some(allowed => {
       if (typeof allowed === 'string') {
@@ -225,10 +206,9 @@ app.get("/api/health", (req, res) => {
     environment: process.env.NODE_ENV || "development",
     services: {
       database: "connected",
-      browserless: process.env.BROWSERLESS_TOKEN
-        ? "configured"
-        : "not_configured",
+      browserless: process.env.BROWSERLESS_TOKEN ? "configured" : "not_configured",
       ratehawk: "operational",
+      poi: "mapbox", // Using Mapbox (on-demand)
     },
     activeSessions: global.userSessions.size,
     endpoints: {
@@ -239,20 +219,16 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Test endpoint for debugging
 app.get("/api/test", (req, res) => {
   res.json({
     message: "Backend server is running!",
     timestamp: new Date().toISOString(),
-    browserlessToken: process.env.BROWSERLESS_TOKEN
-      ? "Configured"
-      : "Not configured",
+    browserlessToken: process.env.BROWSERLESS_TOKEN ? "Configured" : "Not configured",
     activeSessions: global.userSessions.size,
     environment: process.env.NODE_ENV || "development",
   });
 });
 
-// Session cleanup endpoint
 app.post("/api/cleanup-sessions", (req, res) => {
   const beforeCount = global.userSessions.size;
   let cleanedCount = 0;
@@ -278,7 +254,6 @@ app.post("/api/cleanup-sessions", (req, res) => {
   });
 });
 
-// List active sessions endpoint (for debugging)
 app.get("/api/sessions", (req, res) => {
   const sessions = Array.from(global.userSessions.entries()).map(
     ([userId, session]) => ({
@@ -300,7 +275,6 @@ app.get("/api/sessions", (req, res) => {
   });
 });
 
-// Webhook endpoint for Make.com integration
 app.post("/api/webhook/ratehawk-login", async (req, res) => {
   console.log("🔗 Webhook received from Make.com");
   console.log("📥 Webhook payload:", JSON.stringify(req.body, null, 2));
@@ -318,7 +292,6 @@ app.post("/api/webhook/ratehawk-login", async (req, res) => {
     const loginResult = await loginUserToRateHawk(email, password, userId);
 
     if (loginResult.success) {
-      // Store session
       global.userSessions.set(userId, {
         sessionId: loginResult.sessionId,
         cookies: loginResult.cookies,
@@ -349,7 +322,6 @@ app.post("/api/webhook/ratehawk-login", async (req, res) => {
   }
 });
 
-// Catch-all route for undefined endpoints
 app.use("*", (req, res) => {
   res.status(404).json({
     error: "Endpoint not found",
@@ -358,12 +330,12 @@ app.use("*", (req, res) => {
       test: "GET /api/test",
       auth: "POST /api/auth/login, POST /api/auth/register",
       ratehawk: "POST /api/ratehawk/login, POST /api/ratehawk/search, POST /api/ratehawk/hotel/static-info",
+      poi: "GET /api/ratehawk/hotel/:hotelId/poi (Mapbox)",
       sessions: "GET /api/sessions, POST /api/cleanup-sessions",
     },
   });
 });
 
-// Global error handler
 app.use((err, req, res, next) => {
   console.error("💥 Server error:", err);
   res.status(500).json({
@@ -373,7 +345,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Graceful shutdown handling
 process.on("SIGTERM", () => {
   console.log("🛑 SIGTERM received, shutting down gracefully...");
   process.exit(0);
@@ -384,41 +355,26 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-// Start server
 async function startServer() {
   try {
-    // Initialize database
     await initializeDatabase();
 
-    // Start HTTP server
-    app.listen(PORT, async () => { // ✅ UPDATED: Added 'async'
+    app.listen(PORT, () => {
       console.log("🚀 ===== SERVER STARTED =====");
       console.log(`📡 Server running on port ${PORT}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
       console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`);
       console.log(`🔐 Auth routes: http://localhost:${PORT}/api/auth/*`);
-      console.log(
-        `🏨 RateHawk routes: http://localhost:${PORT}/api/ratehawk/*`
-      );
-      console.log(
-        `🌍 Browserless: ${process.env.BROWSERLESS_TOKEN ? "✅ Configured" : "❌ Not configured"
-        }`
-      );
+      console.log(`🏨 RateHawk routes: http://localhost:${PORT}/api/ratehawk/*`);
+      console.log(`🗺️  POI: Mapbox API (on-demand)`);
+      console.log(`🌍 Browserless: ${process.env.BROWSERLESS_TOKEN ? "✅ Configured" : "❌ Not configured"}`);
       console.log("===============================");
-
-      // ✅ NEW: Initialize POI cache
-      console.log("");
-      console.log("🔄 Starting POI cache initialization...");
-      console.log("⚠️ This will take 30-60 seconds on first startup");
-      console.log("🌐 Server is ready to accept requests");
       
-      initializePOICache().catch(error => {
-        console.error("❌ POI initialization failed (non-fatal):", error.message);
-        console.log("💡 Server will continue without POI data");
-      });
+      // ⚠️ REMOVED POI INITIALIZATION
+      // Mapbox POI works on-demand when endpoint is called
+      // No need to pre-load anything!
     });
 
-    // Session cleanup interval (every hour)
     setInterval(() => {
       const beforeCount = global.userSessions.size;
       let cleanedCount = 0;
@@ -434,16 +390,13 @@ async function startServer() {
       });
 
       if (cleanedCount > 0) {
-        console.log(
-          `🧹 Auto-cleanup: Removed ${cleanedCount} expired sessions`
-        );
+        console.log(`🧹 Auto-cleanup: Removed ${cleanedCount} expired sessions`);
       }
-    }, 60 * 60 * 1000); // 1 hour
+    }, 60 * 60 * 1000);
   } catch (error) {
     console.error("💥 Failed to start server:", error);
     process.exit(1);
   }
 }
 
-// Start the server
 startServer();
