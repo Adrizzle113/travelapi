@@ -43,16 +43,24 @@ export async function executeSearch(searchParams) {
     // Step 1: Resolve destination to region_id
     let region_id = searchParams.region_id;
     
+    // If no region_id, check destination parameter
     if (!region_id && searchParams.destination) {
-      console.log(`🔍 Resolving destination: "${searchParams.destination}"`);
-      const resolved = await resolveDestination(searchParams.destination);
-      
-      if (!resolved.region_id) {
-        throw new Error(`Destination not found: ${searchParams.destination}`);
+      // Check if destination is already a number (region_id from frontend autocomplete)
+      if (!isNaN(searchParams.destination) && Number.isInteger(Number(searchParams.destination))) {
+        region_id = Number(searchParams.destination);
+        console.log(`✅ Using provided region_id: ${region_id}`);
+      } else {
+        // It's a city name string, resolve it
+        console.log(`🔍 Resolving destination: "${searchParams.destination}"`);
+        const resolved = await resolveDestination(searchParams.destination);
+        
+        if (!resolved.region_id) {
+          throw new Error(`Destination not found: ${searchParams.destination}`);
+        }
+        
+        region_id = resolved.region_id;
+        console.log(`✅ Resolved to region_id: ${region_id} (${resolved.region_name})`);
       }
-      
-      region_id = resolved.region_id;
-      console.log(`✅ Resolved to region_id: ${region_id} (${resolved.region_name})`);
     }
 
     if (!region_id) {
@@ -60,32 +68,45 @@ export async function executeSearch(searchParams) {
     }
 
     // Step 2: Generate cache signature
-    const fullParams = { ...searchParams, region_id };
+    const fullParams = { 
+      ...searchParams, 
+      region_id,
+      checkin: searchParams.checkin,
+      checkout: searchParams.checkout,
+      guests: searchParams.guests,
+      currency: searchParams.currency || 'USD',
+      residency: searchParams.residency || 'us'
+    };
     const signature = generateSearchSignature(fullParams);
 
     // Step 3: Check cache
     const cached = await getFromCache(signature);
     if (cached) {
+      const cacheAge = Math.round((Date.now() - new Date(cached.cached_at).getTime()) / 1000);
       console.log(`✅ Cache HIT: ${signature} (${Date.now() - startTime}ms)`);
       return {
-        ...cached,
+        hotels: cached.hotels,
+        total_hotels: cached.total_hotels,
         from_cache: true,
-        cache_age_ms: Date.now() - new Date(cached.cached_at).getTime()
+        search_signature: signature,
+        cache_age: `${cacheAge}s`
       };
     }
 
     console.log(`⚠️ Cache MISS: ${signature} - calling ETG API`);
 
     // Step 4: Call ETG API
+    console.log(`🔍 ETG Search: region_id=${region_id}, ${fullParams.checkin} → ${fullParams.checkout}`);
     const results = await searchHotels(fullParams);
 
     // Step 5: Cache the results
     await saveToCache(signature, fullParams, results);
 
-    console.log(`✅ Search complete: ${results.total_hotels} hotels (${Date.now() - startTime}ms)`);
+    console.log(`✅ Search complete: ${results.hotels?.length || 0} hotels (${Date.now() - startTime}ms)`);
 
     return {
-      ...results,
+      hotels: results.hotels || [],
+      total_hotels: results.hotels?.length || 0,
       from_cache: false,
       search_signature: signature
     };
@@ -127,11 +148,11 @@ async function getFromCache(signature) {
     });
 
     return {
-      hotels: cached.hotel_ids.map(id => ({ hotel_id: id })),
-      rates_index: cached.rates_index,
-      region_id: cached.region_id,
+      hotels: cached.hotel_ids.map(id => ({
+        hotel_id: id,
+        ...(cached.rates_index[id] || {})
+      })),
       total_hotels: cached.total_hotels,
-      etg_search_id: cached.etg_search_id,
       cached_at: cached.cached_at
     };
 
@@ -149,12 +170,14 @@ async function getFromCache(signature) {
  */
 async function saveToCache(signature, params, results) {
   try {
-    const hotel_ids = results.hotels.map(h => h.hotel_id || h.id);
+    const hotels = results.hotels || [];
+    const hotel_ids = hotels.map(h => h.hotel_id || h.id);
     
     // Build rates index for quick lookup
     const rates_index = {};
-    results.hotels.forEach(hotel => {
-      rates_index[hotel.hotel_id || hotel.id] = {
+    hotels.forEach(hotel => {
+      const hotelId = hotel.hotel_id || hotel.id;
+      rates_index[hotelId] = {
         min_rate: hotel.min_rate,
         rates: hotel.rates || []
       };
@@ -165,10 +188,10 @@ async function saveToCache(signature, params, results) {
       update: {
         search_params: params,
         region_id: params.region_id,
-        total_hotels: results.total_hotels,
+        total_hotels: hotel_ids.length,
         hotel_ids,
         rates_index,
-        etg_search_id: results.search_id,
+        etg_search_id: results.search_id || signature,
         cached_at: new Date(),
         expires_at: new Date(Date.now() + SEARCH_CACHE_TTL),
         hit_count: 0
@@ -177,10 +200,10 @@ async function saveToCache(signature, params, results) {
         search_signature: signature,
         search_params: params,
         region_id: params.region_id,
-        total_hotels: results.total_hotels,
+        total_hotels: hotel_ids.length,
         hotel_ids,
         rates_index,
-        etg_search_id: results.search_id,
+        etg_search_id: results.search_id || signature,
         expires_at: new Date(Date.now() + SEARCH_CACHE_TTL)
       }
     });
@@ -208,13 +231,10 @@ export async function paginateSearch(signature, page = 1, limit = 20) {
 
   const start = (page - 1) * limit;
   const end = start + limit;
-  const pageHotels = cached.hotel_ids.slice(start, end);
+  const pageHotels = cached.hotels.slice(start, end);
 
   return {
-    hotels: pageHotels.map(id => ({
-      hotel_id: id,
-      ...cached.rates_index[id]
-    })),
+    hotels: pageHotels,
     pagination: {
       page,
       limit,
