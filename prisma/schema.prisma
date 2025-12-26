@@ -36,7 +36,7 @@ model HotelStaticCache {
   cached_at    DateTime @default(now()) @db.Timestamp(6)
   expires_at   DateTime @db.Timestamp(6)
 
-  @@unique([hotel_id, language], name: "unique_hotel_language")
+  @@unique([hotel_id, language], name: "hotel_id_language")
   @@index([hotel_id], name: "idx_hotel_id")
   @@index([expires_at], name: "idx_expires_at")
   @@map("hotel_static_cache")
