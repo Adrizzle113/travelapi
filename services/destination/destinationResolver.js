@@ -8,7 +8,15 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { searchRegions } from '../etg/etgClient.js';
+
+/**
+ * Search destination via ETG API and cache result
+ * TODO: Implement when ETG regions endpoint is added
+ */
+async function findViaAPI(query) {
+  console.log(`⚠️ [TIER 3] API lookup not implemented yet for: ${query}`);
+  return null;
+}
 
 const prisma = new PrismaClient();
 
