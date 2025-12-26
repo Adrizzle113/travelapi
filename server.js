@@ -126,6 +126,7 @@ app.use("/api/ratehawk", ratehawkRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/booking-form", BookingFormCreationRoute);
 app.use("/api/destinations", DestinationRoute);
+app.use("/api/destination", DestinationRoute);
 
 // Root endpoint
 app.get("/", (req, res) => {
