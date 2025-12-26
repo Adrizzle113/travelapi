@@ -1,16 +1,16 @@
 /**
- * RateHawk Search Routes
- * Handles hotel search functionality
+ * RateHawk Search Routes - ETG API Integration
+ * Uses new ETG API with caching (Phase 1)
  */
 
 import express from "express";
 import { validateSession } from "../../services/ratehawkLoginService.js";
-import { searchHotels } from "../../services/ratehawkSearchService.js";
+import { executeSearch, paginateSearch } from "../../services/search/searchService.js";
 
 const router = express.Router();
 
 // ================================
-// HOTEL SEARCH
+// HOTEL SEARCH (NEW ETG API)
 // ================================
 
 router.post("/search", async (req, res) => {
@@ -21,13 +21,13 @@ router.post("/search", async (req, res) => {
     checkin,
     checkout,
     guests,
-    residency = "en-us",
+    residency = "us",
     currency = "USD",
     page = 1,
     filters = {},
   } = req.body;
 
-  console.log("🔍 === RATEHAWK SEARCH REQUEST ===");
+  console.log("🔍 === ETG API SEARCH REQUEST ===");
   console.log(`👤 User ID: ${userId}`);
   console.log(`🗺️ Destination: ${destination}`);
   console.log(`📅 Check-in: ${checkin}`);
@@ -38,87 +38,71 @@ router.post("/search", async (req, res) => {
   console.log(`📄 Page: ${page}`);
 
   // Validation
-  if (!userId || !destination || !checkin || !checkout || !guests) {
+  if (!destination || !checkin || !checkout || !guests) {
     console.log("❌ Missing required parameters");
     return res.status(400).json({
       success: false,
-      error: "Missing required fields: userId, destination, checkin, checkout, guests",
+      error: "Missing required fields: destination, checkin, checkout, guests",
       hotels: [],
       totalHotels: 0,
-      availableHotels: 0,
     });
   }
 
   try {
-    // Get user session
-    const userSession = global.userSessions.get(userId);
-    if (!userSession) {
-      console.log("❌ No session found for user:", userId);
-      return res.status(401).json({
-        success: false,
-        error: "No RateHawk session found. Please login first.",
-        hotels: [],
-        totalHotels: 0,
-        availableHotels: 0,
-      });
-    }
-
-    // Validate session
-    if (!validateSession(userSession)) {
-      console.log("❌ Invalid/expired session for user:", userId);
-      global.userSessions.delete(userId);
-      return res.status(401).json({
-        success: false,
-        error: "RateHawk session expired. Please login again.",
-        hotels: [],
-        totalHotels: 0,
-        availableHotels: 0,
-      });
-    }
-
-    // Update last used timestamp
-    userSession.lastUsed = new Date();
-    global.userSessions.set(userId, userSession);
-
-    console.log(`✅ Using valid session for search`);
-
-    // Perform search
-    const searchResult = await searchHotels({
-      userSession,
+    // Execute search with caching
+    const searchResult = await executeSearch({
       destination,
       checkin,
       checkout,
       guests,
-      residency,
       currency,
-      page,
-      filters,
+      residency,
     });
 
     const duration = Date.now() - startTime;
     console.log(`⏱️ Search completed in ${duration}ms`);
 
-    // Add duration to result
-    searchResult.searchDuration = `${duration}ms`;
-    searchResult.timestamp = new Date().toISOString();
+    // Paginate results if needed
+    if (page > 1 && searchResult.search_signature) {
+      const paginatedResult = await paginateSearch(
+        searchResult.search_signature,
+        page,
+        20
+      );
 
-    res.json(searchResult);
+      return res.json({
+        success: true,
+        ...paginatedResult,
+        searchDuration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Return first page
+    res.json({
+      success: true,
+      hotels: searchResult.hotels || [],
+      totalHotels: searchResult.total_hotels || 0,
+      from_cache: searchResult.from_cache || false,
+      search_signature: searchResult.search_signature,
+      searchDuration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error("💥 Hotel search error:", error);
+    console.error("💥 ETG search error:", error);
 
     res.status(500).json({
       success: false,
       error: `Search failed: ${error.message}`,
       hotels: [],
       totalHotels: 0,
-      availableHotels: 0,
       searchDuration: `${duration}ms`,
       timestamp: new Date().toISOString(),
       debug: {
-        userId: userId,
-        destination: destination,
+        destination,
         errorType: error.name || "Unknown",
+        message: error.message,
       },
     });
   }
