@@ -19,6 +19,7 @@
   "author": "Your Name",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.57.2",
     "axios": "^1.12.2",
     "bcrypt": "^5.1.1",
@@ -32,6 +33,7 @@
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.6",
     "postmark": "^4.0.5",
+    "prisma": "^5.22.0",
     "puppeteer-core": "^24.9.0",
     "sqlite3": "^5.1.7",
     "uid": "^2.0.2",

@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model DestinationCache {
+  id                String   @id @default(uuid()) @db.Uuid
+  destination_name  String   @unique @db.VarChar(255)
+  region_id         Int
+  region_name       String?  @db.VarChar(255)
+  last_verified     DateTime @default(now()) @db.Timestamp(6)
+  created_at        DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([destination_name], name: "idx_destination_name")
+  @@map("destination_cache")
+}
+
+model HotelStaticCache {
+  id           String   @id @default(uuid()) @db.Uuid
+  hotel_id     String   @db.VarChar(255)
+  language     String   @default("en") @db.VarChar(10)
+  name         String?  @db.VarChar(500)
+  address      String?  @db.Text
+  city         String?  @db.VarChar(255)
+  country      String?  @db.VarChar(100)
+  star_rating  Int?     @db.SmallInt
+  images       Json?    @db.JsonB
+  amenities    Json?    @db.JsonB
+  description  String?  @db.Text
+  coordinates  Json?    @db.JsonB
+  raw_data     Json?    @db.JsonB
+  cached_at    DateTime @default(now()) @db.Timestamp(6)
+  expires_at   DateTime @db.Timestamp(6)
+
+  @@unique([hotel_id, language], name: "unique_hotel_language")
+  @@index([hotel_id], name: "idx_hotel_id")
+  @@index([expires_at], name: "idx_expires_at")
+  @@map("hotel_static_cache")
+}
+
+model SearchCache {
+  id                String   @id @default(uuid()) @db.Uuid
+  search_signature  String   @unique @db.VarChar(64)
+  search_params     Json     @db.JsonB
+  region_id         Int
+  total_hotels      Int
+  hotel_ids         String[] @db.Text
+  rates_index       Json     @db.JsonB
+  etg_search_id     String?  @db.VarChar(255)
+  cached_at         DateTime @default(now()) @db.Timestamp(6)
+  expires_at        DateTime @db.Timestamp(6)
+  hit_count         Int      @default(0)
+
+  @@index([search_signature], name: "idx_search_signature")
+  @@index([expires_at], name: "idx_search_expires_at")
+  @@index([region_id], name: "idx_search_region")
+  @@map("search_cache")
+}
+
+model User {
+  id                        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email                     String   @unique @db.VarChar(255)
+  first_name                String?  @db.VarChar(100)
+  last_name                 String?  @db.VarChar(100)
+  phone_number              String?  @db.VarChar(20)
+  agency_name               String?  @db.VarChar(255)
+  legal_name                String?  @db.VarChar(255)
+  city                      String?  @db.VarChar(100)
+  address                   String?  @db.Text
+  actual_address_matches    Boolean? @default(true)
+  itn                       String?  @db.VarChar(100)
+  logo_url                  String?  @db.Text
+  created_at                DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([email], name: "idx_users_email")
+  @@map("users")
+}
