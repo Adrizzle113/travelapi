@@ -4,7 +4,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { getHotelInformation } from '../etg/etgClient.js';
+import { getHotelInformation as fetchHotelInfoFromETG } from '../etg/etgClient.js';
 
 const prisma = new PrismaClient();
 
@@ -34,8 +34,8 @@ export async function getHotelInformation(hotel_id, language = 'en') {
 
     console.log(`⚠️ Hotel cache MISS: ${hotel_id} - calling ETG API`);
 
-    // Fetch from ETG API
-    const hotelData = await getHotelInformation(hotelId, language);
+    // Fetch from ETG API (note: using the aliased import)
+    const hotelData = await fetchHotelInfoFromETG(hotel_id, language);
 
     // Cache the result
     await saveToCache(hotel_id, language, hotelData);
