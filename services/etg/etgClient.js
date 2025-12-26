@@ -1,144 +1,118 @@
 /**
- * ETG API Client - Corrected Version
- * Uses actual ETG API v3 endpoints
- * Base URL: https://api.worldota.net
- * Authentication: HTTP Basic Auth
+ * ETG (Emerging Travel Group) API Client
+ * Handles all communication with WorldOTA/ETG API
  */
 
 import axios from 'axios';
 
 // ETG API Configuration
 const ETG_BASE_URL = 'https://api.worldota.net/api/b2b/v3';
-const ETG_KEY_ID = process.env.ETG_PARTNER_ID || '11606';
-const ETG_API_KEY = process.env.ETG_API_KEY || 'ff9702bb-ba93-4996-a31e-547983c51530';
+const ETG_PARTNER_ID = process.env.ETG_PARTNER_ID || '11606';
+const ETG_API_KEY = process.env.ETG_API_KEY;
 
-// Create axios instance with Basic Auth
-const etgClient = axios.create({
+if (!ETG_API_KEY) {
+  console.warn('⚠️ ETG_API_KEY not set - API calls will fail');
+}
+
+// Create axios instance with auth
+const apiClient = axios.create({
   baseURL: ETG_BASE_URL,
   auth: {
-    username: ETG_KEY_ID,
+    username: ETG_PARTNER_ID,
     password: ETG_API_KEY
   },
   headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    'Content-Type': 'application/json'
   },
-  timeout: 30000
+  timeout: 120000 // 2 minutes for hotel searches
 });
 
 /**
- * Search for hotels by region
- * @param {Object} searchParams
- * @returns {Promise<Object>} - Search results
+ * Search hotels by region
+ * @param {Object} params - Search parameters
+ * @returns {Promise<Object>} - Search results with hotels
  */
-export async function searchHotels(searchParams) {
-  const {
-    region_id,
-    checkin,
-    checkout,
-    guests = [{ adults: 2, children: [] }],
-    currency = 'USD',
-    language = 'en',
-    residency = 'us'
-  } = searchParams;
-
-  console.log(`🔍 ETG Search: region_id=${region_id}, ${checkin} → ${checkout}`);
+export async function searchHotels(params) {
+  const { region_id, checkin, checkout, guests, currency = 'USD', residency = 'us' } = params;
 
   try {
-    const response = await etgClient.post('/search/serp/region/', {
+    console.log(`🔍 ETG searchHotels: region_id=${region_id}, ${checkin} → ${checkout}`);
+
+    const response = await apiClient.post('/search/serp/region/', {
+      region_id,
       checkin,
       checkout,
       residency,
-      language,
+      language: 'en',
       guests,
-      region_id,
       currency
     });
 
-    const hotels = response.data.data?.hotels || [];
-    
-    console.log(`✅ ETG Search complete: ${hotels.length} hotels found`);
+    if (response.data && response.data.status === 'ok') {
+      const hotels = response.data.data?.hotels || [];
+      console.log(`✅ ETG Search complete: ${hotels.length} hotels found`);
+      
+      return {
+        hotels,
+        search_id: response.data.data?.search_id,
+        total_hotels: hotels.length
+      };
+    }
 
-    return {
-      search_id: response.data.data?.search_id,
-      hotels: hotels,
-      region_id,
-      total_hotels: response.data.data?.total_hotels || hotels.length,
-      currency,
-      timestamp: new Date().toISOString()
-    };
+    console.warn('⚠️ ETG returned non-ok status:', response.data?.status);
+    return { hotels: [], total_hotels: 0 };
 
   } catch (error) {
-    console.error('❌ ETG Search failed:', error.response?.data || error.message);
-    
-    throw new Error(`ETG Search failed: ${error.response?.data?.error?.message || error.message}`);
+    console.error('❌ ETG searchHotels error:', error.message);
+    if (error.response) {
+      console.error('   Status:', error.response.status);
+      console.error('   Data:', error.response.data);
+    }
+    throw new Error(`ETG search failed: ${error.message}`);
   }
 }
 
 /**
- * Get detailed hotel static information
- * @param {string} hotel_id - ETG hotel ID
- * @param {string} language - Language code
- * @returns {Promise<Object>} - Hotel details
+ * Get static hotel information
+ * @param {string} hotelId - Hotel ID
+ * @param {string} language - Language code (default: en)
+ * @returns {Promise<Object>} - Hotel static data
  */
-export async function getHotelInfo(hotel_id, language = 'en') {
-  console.log(`🏨 Fetching hotel info: ${hotel_id} (${language})`);
-
+export async function getHotelInformation(hotelId, language = 'en') {
   try {
-    const response = await etgClient.post('/hotel/info/static/', {
-      ids: [hotel_id],
+    console.log(`🏨 ETG getHotelInfo: ${hotelId}`);
+
+    const response = await apiClient.post('/hotel/info/static/', {
+      hotel_id: hotelId,
       language
     });
 
-    const hotelData = response.data.data?.[hotel_id];
-
-    if (!hotelData) {
-      throw new Error(`Hotel ${hotel_id} not found`);
+    if (response.data && response.data.status === 'ok') {
+      return response.data.data;
     }
 
-    console.log(`✅ Hotel info retrieved: ${hotelData.name || hotel_id}`);
-
-    return {
-      hotel_id,
-      name: hotelData.name,
-      address: hotelData.address,
-      city: hotelData.city?.name,
-      country: hotelData.country?.name,
-      star_rating: hotelData.star_rating,
-      images: hotelData.images || [],
-      amenities: hotelData.amenity_groups || [],
-      description: hotelData.description_struct,
-      coordinates: hotelData.coordinates,
-      ...hotelData
-    };
+    throw new Error('Hotel info not found');
 
   } catch (error) {
-    console.error(`❌ Failed to get hotel info for ${hotel_id}:`, error.response?.data || error.message);
-    throw new Error(`Hotel info fetch failed: ${error.message}`);
+    console.error('❌ ETG getHotelInfo error:', error.message);
+    throw error;
   }
 }
 
 /**
  * Get hotel page with rates
- * @param {string} hotel_id - Hotel ID
- * @param {Object} searchParams - Search parameters
- * @returns {Promise<Object>} - Hotel page with rates
+ * @param {string} hotelId - Hotel ID
+ * @param {Object} params - Search parameters
+ * @returns {Promise<Object>} - Hotel page data with rates
  */
-export async function getHotelPage(hotel_id, searchParams) {
-  const {
-    checkin,
-    checkout,
-    guests = [{ adults: 2, children: [] }],
-    currency = 'USD',
-    language = 'en',
-    residency = 'us'
-  } = searchParams;
-
-  console.log(`💰 Fetching hotel page: ${hotel_id}`);
+export async function getHotelPage(hotelId, params) {
+  const { checkin, checkout, guests, currency = 'USD', residency = 'us', language = 'en' } = params;
 
   try {
-    const response = await etgClient.post('/hotel/info/hotelpage/', {
-      id: hotel_id,
+    console.log(`🏨 ETG getHotelPage: ${hotelId}`);
+
+    const response = await apiClient.post('/hotel/info/hotelpage/', {
+      hotel_id: hotelId,
       checkin,
       checkout,
       residency,
@@ -147,18 +121,50 @@ export async function getHotelPage(hotel_id, searchParams) {
       currency
     });
 
-    console.log(`✅ Hotel page retrieved for ${hotel_id}`);
+    if (response.data && response.data.status === 'ok') {
+      return response.data.data;
+    }
 
-    return response.data.data;
+    throw new Error('Hotel page not found');
 
   } catch (error) {
-    console.error(`❌ Failed to get hotel page for ${hotel_id}:`, error.response?.data || error.message);
-    throw new Error(`Hotel page fetch failed: ${error.message}`);
+    console.error('❌ ETG getHotelPage error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Search for regions/destinations (autocomplete)
+ * @param {string} query - Search query
+ * @returns {Promise<Array>} - Array of matching regions
+ */
+export async function searchRegions(query) {
+  try {
+    console.log(`🔍 ETG searchRegions: "${query}"`);
+
+    const response = await apiClient.post('/search/serp/suggest/', {
+      query: query,
+      language: 'en'
+    });
+
+    if (response.data && response.data.status === 'ok') {
+      const regions = response.data.data?.regions || [];
+      console.log(`✅ Found ${regions.length} regions for: ${query}`);
+      return regions;
+    }
+
+    console.warn('⚠️ No regions found for:', query);
+    return [];
+
+  } catch (error) {
+    console.error('❌ ETG searchRegions error:', error.message);
+    return [];
   }
 }
 
 export default {
   searchHotels,
-  getHotelInfo,
-  getHotelPage
+  getHotelInformation,
+  getHotelPage,
+  searchRegions
 };

@@ -1,28 +1,18 @@
 /**
  * Destination Resolver with 3-Tier Strategy
- * Tier 1: Static map (instant, most common cities)
- * Tier 2: Database cache (fast, previously resolved)
- * Tier 3: ETG API (slow, requires network call)
- * 
- * Now includes fuzzy matching for partial city names
+ * Tier 1: Static map (instant)
+ * Tier 2: Database cache (fast)
+ * Tier 3: ETG API (network call)
  */
 
 import { PrismaClient } from '@prisma/client';
-
-/**
- * Search destination via ETG API and cache result
- * TODO: Implement when ETG regions endpoint is added
- */
-async function findViaAPI(query) {
-  console.log(`⚠️ [TIER 3] API lookup not implemented yet for: ${query}`);
-  return null;
-}
+import { searchRegions } from '../etg/etgClient.js';
 
 const prisma = new PrismaClient();
 
-// Tier 1: Static map of top 100 destinations
+// Tier 1: Static destinations map
 const STATIC_DESTINATIONS = {
-  // United States
+  // US Cities
   'New York': { region_id: 2621, region_name: 'New York City' },
   'New York City': { region_id: 2621, region_name: 'New York City' },
   'NYC': { region_id: 2621, region_name: 'New York City' },
@@ -63,66 +53,38 @@ const STATIC_DESTINATIONS = {
   'Hong Kong': { region_id: 2503, region_name: 'Hong Kong' },
   'Bangkok': { region_id: 2259, region_name: 'Bangkok' },
   'Istanbul': { region_id: 2524, region_name: 'Istanbul' },
-  'Mexico City': { region_id: 2167, region_name: 'Mexico City' },
-  'Toronto': { region_id: 2732, region_name: 'Toronto' },
-  'Vancouver': { region_id: 2746, region_name: 'Vancouver' },
-  'Montreal': { region_id: 2176, region_name: 'Montreal' },
 };
 
-/**
- * Normalize destination string for matching
- */
-function normalizeDestination(destination) {
-  return destination
-    .trim()
-    .toLowerCase()
-    .replace(/,.*$/, '') // Remove state/country suffix
-    .replace(/\s+/g, ' '); // Normalize whitespace
+function normalizeQuery(query) {
+  return query.trim().toLowerCase().replace(/,.*$/, '').replace(/\s+/g, ' ');
 }
 
-/**
- * Parse slug format (e.g., "united_states_of_america/los_angeles")
- * Returns the city name in proper format
- */
-function parseSlugFormat(slug) {
-  if (!slug.includes('/')) {
-    return null;
-  }
+function parseSlug(slug) {
+  if (!slug.includes('/')) return null;
   
-  const parts = slug.split('/');
-  const citySlug = parts[parts.length - 1];
-  
-  // Convert snake_case to Title Case
-  const cityName = citySlug
+  const citySlug = slug.split('/').pop();
+  return citySlug
     .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
-  
-  console.log(`📍 Parsed slug "${slug}" → "${cityName}"`);
-  return cityName;
 }
 
-/**
- * Find destination in static map with fuzzy matching
- */
 function findInStaticMap(query) {
-  const normalized = normalizeDestination(query);
+  const normalized = normalizeQuery(query);
   
-  // Try exact match first
+  // Exact match
   for (const [key, value] of Object.entries(STATIC_DESTINATIONS)) {
-    if (normalizeDestination(key) === normalized) {
-      console.log(`✅ [TIER 1] Exact match: ${query} → ${value.region_id}`);
+    if (normalizeQuery(key) === normalized) {
+      console.log(`✅ [TIER 1] Static match: ${query} → ${value.region_id}`);
       return value;
     }
   }
   
-  // Try partial match (e.g., "Long Beach" matches "Long Beach, California")
+  // Fuzzy match
   for (const [key, value] of Object.entries(STATIC_DESTINATIONS)) {
-    const normalizedKey = normalizeDestination(key);
-    
-    // Check if query is a substring of the key or vice versa
+    const normalizedKey = normalizeQuery(key);
     if (normalizedKey.includes(normalized) || normalized.includes(normalizedKey)) {
-      console.log(`✅ [TIER 1] Fuzzy match: ${query} → ${key} (${value.region_id})`);
+      console.log(`✅ [TIER 1] Fuzzy match: ${query} → ${key}`);
       return value;
     }
   }
@@ -130,153 +92,107 @@ function findInStaticMap(query) {
   return null;
 }
 
-/**
- * Search destination in database cache
- */
 async function findInCache(query) {
   try {
-    const normalized = normalizeDestination(query);
-    
     const cached = await prisma.destinationCache.findFirst({
       where: {
         OR: [
           { search_query: { equals: query, mode: 'insensitive' } },
-          { search_query: { equals: normalized, mode: 'insensitive' } },
           { region_name: { contains: query, mode: 'insensitive' } }
         ]
-      },
-      orderBy: { last_used: 'desc' }
+      }
     });
     
     if (cached) {
-      // Update last used timestamp
       await prisma.destinationCache.update({
         where: { id: cached.id },
-        data: { 
-          last_used: new Date(),
-          hit_count: { increment: 1 }
-        }
+        data: { last_used: new Date(), hit_count: { increment: 1 } }
       });
       
       console.log(`✅ [TIER 2] Cache hit: ${query} → ${cached.region_id}`);
-      return {
-        region_id: cached.region_id,
-        region_name: cached.region_name
-      };
+      return { region_id: cached.region_id, region_name: cached.region_name };
     }
     
-    console.log(`⚠️ [TIER 2] Cache miss: ${query}`);
     return null;
-    
   } catch (error) {
     console.error('❌ [TIER 2] Cache error:', error);
     return null;
   }
 }
 
-/**
- * Search destination via ETG API and cache result
- */
-async function findViaAPI(query) {
+async function findViaETG(query) {
   try {
-    console.log(`🔍 [TIER 3] Calling ETG API for: ${query}`);
+    console.log(`🔍 [TIER 3] Calling ETG API: ${query}`);
     
-    const results = await searchRegions(query);
+    const regions = await searchRegions(query);
     
-    if (!results || results.length === 0) {
-      console.log(`⚠️ [TIER 3] No results from ETG for: ${query}`);
+    if (!regions || regions.length === 0) {
       return null;
     }
     
-    // Get the best match (first result, usually most relevant)
-    const bestMatch = results[0];
-    const region = {
+    const bestMatch = regions[0];
+    const result = {
       region_id: bestMatch.id,
-      region_name: bestMatch.name || bestMatch.full_name || query
+      region_name: bestMatch.name || query
     };
     
-    console.log(`✅ [TIER 3] Found via API: ${query} → ${region.region_id} (${region.region_name})`);
+    console.log(`✅ [TIER 3] ETG found: ${query} → ${result.region_id}`);
     
-    // Cache for future use
+    // Cache it
     try {
       await prisma.destinationCache.create({
         data: {
           search_query: query,
-          region_id: region.region_id,
-          region_name: region.region_name,
-          region_data: bestMatch,
-          last_used: new Date()
+          region_id: result.region_id,
+          region_name: result.region_name,
+          region_data: bestMatch
         }
       });
-      console.log(`💾 Cached destination: ${query}`);
-    } catch (cacheError) {
-      // Non-fatal - continue without caching
-      console.error('⚠️ Cache write failed:', cacheError.message);
+    } catch (e) {
+      // Ignore cache errors
     }
     
-    return region;
-    
+    return result;
   } catch (error) {
-    console.error('❌ [TIER 3] API error:', error);
+    console.error('❌ [TIER 3] ETG error:', error);
     return null;
   }
 }
 
-/**
- * Main resolver function
- * Resolves destination to region_id using 3-tier strategy
- * 
- * @param {string} destination - City name, slug, or region ID
- * @returns {Promise<Object>} - { region_id, region_name }
- */
 export async function resolveDestination(destination) {
   if (!destination) {
     throw new Error('Destination is required');
   }
   
-  let queryToResolve = String(destination).trim();
+  let query = String(destination).trim();
   
-  // Handle slug format (e.g., "united_states_of_america/los_angeles")
-  if (queryToResolve.includes('/')) {
-    const parsed = parseSlugFormat(queryToResolve);
-    if (parsed) {
-      queryToResolve = parsed;
-    }
+  // Parse slug format
+  if (query.includes('/')) {
+    const parsed = parseSlug(query);
+    if (parsed) query = parsed;
   }
   
-  // Check if it's already a region_id (numeric)
-  if (!isNaN(queryToResolve) && Number.isInteger(Number(queryToResolve))) {
-    const region_id = Number(queryToResolve);
-    console.log(`✅ [TIER 0] Already a region_id: ${region_id}`);
-    return {
-      region_id,
-      region_name: `Region ${region_id}`
-    };
+  // Already a region_id?
+  if (!isNaN(query) && Number.isInteger(Number(query))) {
+    const region_id = Number(query);
+    console.log(`✅ [TIER 0] Numeric region_id: ${region_id}`);
+    return { region_id, region_name: `Region ${region_id}` };
   }
   
-  // Tier 1: Static map with fuzzy matching
-  const staticMatch = findInStaticMap(queryToResolve);
-  if (staticMatch) {
-    return staticMatch;
-  }
+  // Try Tier 1: Static map
+  const staticMatch = findInStaticMap(query);
+  if (staticMatch) return staticMatch;
   
-  // Tier 2: Database cache
-  const cachedMatch = await findInCache(queryToResolve);
-  if (cachedMatch) {
-    return cachedMatch;
-  }
+  // Try Tier 2: Cache
+  const cachedMatch = await findInCache(query);
+  if (cachedMatch) return cachedMatch;
   
-  // Tier 3: ETG API
-  const apiMatch = await findViaAPI(queryToResolve);
-  if (apiMatch) {
-    return apiMatch;
-  }
+  // Try Tier 3: ETG API
+  const etgMatch = await findViaETG(query);
+  if (etgMatch) return etgMatch;
   
-  // Not found anywhere
-  console.error(`❌ Destination not found: ${queryToResolve}`);
-  throw new Error(`Destination not found: ${queryToResolve}`);
+  // Not found
+  throw new Error(`Destination not found: ${query}`);
 }
 
-export default {
-  resolveDestination
-};
+export default { resolveDestination };
