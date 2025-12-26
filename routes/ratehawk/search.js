@@ -65,8 +65,13 @@ router.get("/search", async (req, res) => {
     console.log(`⏱️ GET Search completed in ${duration}ms`);
 
     // Return results
-    res.json({
-      success: true,
+    const paginatedHotels = (searchResult.hotels || []).slice(0, 50);
+
+res.json({
+  success: true,
+  hotels: paginatedHotels,  // ← Only 50 hotels
+  totalHotels: searchResult.total_hotels || 0,
+  returnedHotels: paginatedHotels.length,
       hotels: searchResult.hotels || [],
       totalHotels: searchResult.total_hotels || 0,
       from_cache: searchResult.from_cache || false,
