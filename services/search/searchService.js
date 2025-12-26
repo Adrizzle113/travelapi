@@ -79,8 +79,9 @@ function parseDestination(destination) {
 /**
  * Execute hotel search with caching
  * @param {Object} searchParams - Search parameters
- * @param {string|number} searchParams.destination - City name, region_id, or slug
- * @param {number} searchParams.region_id - Direct region_id (optional)
+ * @param {number} searchParams.region_id - Region ID (required, primary)
+ * @param {string} searchParams.destination - DEPRECATED: City name for backward compatibility
+ * @param {string} searchParams.destination_label - Optional label for logging
  * @param {string} searchParams.checkin - Check-in date (YYYY-MM-DD)
  * @param {string} searchParams.checkout - Check-out date (YYYY-MM-DD)
  * @param {Array} searchParams.guests - Guest configuration
@@ -90,37 +91,50 @@ function parseDestination(destination) {
  */
 export async function executeSearch(searchParams) {
   const startTime = Date.now();
+  const requestId = crypto.randomBytes(4).toString('hex');
 
   try {
-    // Step 1: Resolve destination to region_id
+    console.log(`🔍 [${requestId}] Search request initiated`);
+
     let region_id = searchParams.region_id;
-    
-    // If no region_id provided, parse destination
+    let resolvedLabel = searchParams.destination_label || null;
+    let resolutionMethod = 'direct';
+
     if (!region_id && searchParams.destination) {
+      console.warn(`⚠️ [${requestId}] DEPRECATED: Using destination string instead of region_id`);
+      resolutionMethod = 'legacy_resolver';
+
       const parsed = parseDestination(searchParams.destination);
-      
+
       if (parsed.type === 'region_id') {
-        // Already a region_id
         region_id = parsed.value;
-        console.log(`✅ Using provided region_id: ${region_id}`);
+        console.log(`✅ [${requestId}] Parsed region_id from string: ${region_id}`);
       } else if (parsed.type === 'city_name') {
-        // Need to resolve city name to region_id
-        console.log(`🔍 Resolving destination: "${parsed.value}"`);
+        console.log(`🔍 [${requestId}] Resolving destination: "${parsed.value}"`);
         const resolved = await resolveDestination(parsed.value);
-        
+
         if (!resolved || !resolved.region_id) {
+          console.error(`❌ [${requestId}] Destination not found: ${parsed.value}`);
           throw new Error(`Destination not found: ${parsed.value}`);
         }
-        
+
         region_id = resolved.region_id;
-        console.log(`✅ Resolved to region_id: ${region_id} (${resolved.region_name})`);
+        resolvedLabel = resolved.region_name;
+        console.log(`✅ [${requestId}] Resolved to region_id: ${region_id} (${resolved.region_name})`);
       } else {
+        console.error(`❌ [${requestId}] Invalid destination format: ${searchParams.destination}`);
         throw new Error('Invalid destination format');
       }
     }
 
     if (!region_id) {
-      throw new Error('region_id or destination is required');
+      console.error(`❌ [${requestId}] Missing region_id in request`);
+      throw new Error('region_id is required');
+    }
+
+    console.log(`📍 [${requestId}] Using region_id: ${region_id} (method: ${resolutionMethod})`);
+    if (resolvedLabel) {
+      console.log(`🏷️ [${requestId}] Destination label: ${resolvedLabel}`);
     }
 
     // Step 2: Prepare full search parameters
@@ -140,37 +154,50 @@ export async function executeSearch(searchParams) {
     const cached = await getFromCache(signature);
     if (cached) {
       const cacheAge = Math.round((Date.now() - new Date(cached.cached_at).getTime()) / 1000);
-      console.log(`✅ Cache HIT: ${signature} (${Date.now() - startTime}ms)`);
+      const duration = Date.now() - startTime;
+      console.log(`✅ [${requestId}] Cache HIT: ${signature} (${duration}ms, age: ${cacheAge}s)`);
       return {
         hotels: cached.hotels,
         total_hotels: cached.total_hotels,
         from_cache: true,
         search_signature: signature,
-        cache_age: `${cacheAge}s`
+        cache_age: `${cacheAge}s`,
+        request_id: requestId,
+        resolution_method: resolutionMethod
       };
     }
 
-    console.log(`⚠️ Cache MISS: ${signature} - calling ETG API`);
+    console.log(`⚠️ [${requestId}] Cache MISS: ${signature} - calling ETG API`);
 
     // Step 5: Call ETG API
-    console.log(`🔍 ETG Search: region_id=${region_id}, ${fullParams.checkin} → ${fullParams.checkout}`);
+    const etgStartTime = Date.now();
+    console.log(`🔍 [${requestId}] ETG API call: region_id=${region_id}, ${fullParams.checkin} → ${fullParams.checkout}`);
+
     const results = await searchHotels(fullParams);
+
+    const etgDuration = Date.now() - etgStartTime;
+    console.log(`⏱️ [${requestId}] ETG API responded in ${etgDuration}ms`);
 
     // Step 6: Cache the results
     await saveToCache(signature, fullParams, results);
 
     const hotelCount = results.hotels?.length || 0;
-    console.log(`✅ Search complete: ${hotelCount} hotels (${Date.now() - startTime}ms)`);
+    const totalDuration = Date.now() - startTime;
+    console.log(`✅ [${requestId}] Search complete: ${hotelCount} hotels (total: ${totalDuration}ms, ETG: ${etgDuration}ms)`);
 
     return {
       hotels: results.hotels || [],
       total_hotels: hotelCount,
       from_cache: false,
-      search_signature: signature
+      search_signature: signature,
+      request_id: requestId,
+      resolution_method: resolutionMethod,
+      etg_duration_ms: etgDuration
     };
 
   } catch (error) {
-    console.error('❌ Search failed:', error);
+    const duration = Date.now() - startTime;
+    console.error(`❌ [${requestId}] Search failed after ${duration}ms:`, error.message);
     throw error;
   }
 }

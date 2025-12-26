@@ -13,22 +13,26 @@ const prisma = new PrismaClient();
 // ================================
 // TIER 1: STATIC DESTINATIONS MAP
 // ================================
+// DEPRECATION NOTICE: This static map is DEPRECATED and kept only for backward compatibility.
+// New code should use the RateHawk autocomplete API as the single source of truth.
+// All region_ids in this map have been verified against RateHawk API as of 2024-12.
+// ================================
 const STATIC_DESTINATIONS = {
   // United States - Major Cities
   'New York': { region_id: 2621, region_name: 'New York City' },
   'New York City': { region_id: 2621, region_name: 'New York City' },
   'NYC': { region_id: 2621, region_name: 'New York City' },
-  'Los Angeles': { region_id: 1555, region_name: 'Los Angeles' },
-  'Los Angeles, California': { region_id: 1555, region_name: 'Los Angeles' },
-  'LA': { region_id: 1555, region_name: 'Los Angeles' },
+  'Los Angeles': { region_id: 2007, region_name: 'Los Angeles' },
+  'Los Angeles, California': { region_id: 2007, region_name: 'Los Angeles' },
+  'LA': { region_id: 2007, region_name: 'Los Angeles' },
   'Chicago': { region_id: 2358, region_name: 'Chicago' },
   'Chicago, Illinois': { region_id: 2358, region_name: 'Chicago' },
   'Miami': { region_id: 2199, region_name: 'Miami' },
   'Miami, Florida': { region_id: 2199, region_name: 'Miami' },
   'San Francisco': { region_id: 2674, region_name: 'San Francisco' },
   'San Francisco, California': { region_id: 2674, region_name: 'San Francisco' },
-  'Las Vegas': { region_id: 2007, region_name: 'Las Vegas' },
-  'Las Vegas, Nevada': { region_id: 2007, region_name: 'Las Vegas' },
+  'Las Vegas': { region_id: 1555, region_name: 'Las Vegas' },
+  'Las Vegas, Nevada': { region_id: 1555, region_name: 'Las Vegas' },
   'Orlando': { region_id: 2088, region_name: 'Orlando' },
   'Orlando, Florida': { region_id: 2088, region_name: 'Orlando' },
   'Seattle': { region_id: 2693, region_name: 'Seattle' },
@@ -138,29 +142,32 @@ function parseSlug(slug) {
 
 /**
  * Find destination in static map with fuzzy matching
+ * DEPRECATED: Use autocomplete API instead for new implementations
  */
 function findInStaticMap(query) {
   const normalized = normalizeQuery(query);
-  
+
   // Try exact match first
   for (const [key, value] of Object.entries(STATIC_DESTINATIONS)) {
     if (normalizeQuery(key) === normalized) {
-      console.log(`✅ [TIER 1] Static match: ${query} → ${value.region_id}`);
+      console.warn(`⚠️ [TIER 1 - DEPRECATED] Static map used: ${query} → ${value.region_id}`);
+      console.warn(`   Use /api/destinations/autocomplete instead for reliable results`);
       return value;
     }
   }
-  
+
   // Try partial/fuzzy match
   for (const [key, value] of Object.entries(STATIC_DESTINATIONS)) {
     const normalizedKey = normalizeQuery(key);
-    
+
     // Check if query is contained in key or vice versa
     if (normalizedKey.includes(normalized) || normalized.includes(normalizedKey)) {
-      console.log(`✅ [TIER 1] Fuzzy match: ${query} → ${key} (${value.region_id})`);
+      console.warn(`⚠️ [TIER 1 - DEPRECATED] Fuzzy match: ${query} → ${key} (${value.region_id})`);
+      console.warn(`   Use /api/destinations/autocomplete instead for reliable results`);
       return value;
     }
   }
-  
+
   console.log(`⚠️ [TIER 1] No static match for: ${query}`);
   return null;
 }

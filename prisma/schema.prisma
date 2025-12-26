@@ -61,6 +61,20 @@ model SearchCache {
   @@map("search_cache")
 }
 
+model AutocompleteCache {
+  id          String   @id @default(uuid()) @db.Uuid
+  query_key   String   @unique @db.VarChar(300)
+  query       String   @db.VarChar(255)
+  locale      String   @default("en") @db.VarChar(10)
+  results     Json     @db.JsonB
+  cached_at   DateTime @default(now()) @db.Timestamp(6)
+  expires_at  DateTime @db.Timestamp(6)
+
+  @@index([query_key], name: "idx_autocomplete_query")
+  @@index([expires_at], name: "idx_autocomplete_expires")
+  @@map("autocomplete_cache")
+}
+
 model User {
   id                        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   email                     String   @unique @db.VarChar(255)

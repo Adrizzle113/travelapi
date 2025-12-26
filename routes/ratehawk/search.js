@@ -6,6 +6,7 @@
 
 import express from "express";
 import { executeSearch, paginateSearch } from "../../services/search/searchService.js";
+import { validateRegionId, validateSearchParams } from "../../middleware/validation.js";
 
 const router = express.Router();
 
@@ -64,16 +65,13 @@ router.get("/search", async (req, res) => {
     const duration = Date.now() - startTime;
     console.log(`⏱️ GET Search completed in ${duration}ms`);
 
-    // Return results
     const paginatedHotels = (searchResult.hotels || []).slice(0, 50);
 
-res.json({
-  success: true,
-  hotels: paginatedHotels,  // ← Only 50 hotels
-  totalHotels: searchResult.total_hotels || 0,
-  returnedHotels: paginatedHotels.length,
-      hotels: searchResult.hotels || [],
+    res.json({
+      success: true,
+      hotels: paginatedHotels,
       totalHotels: searchResult.total_hotels || 0,
+      returnedHotels: paginatedHotels.length,
       from_cache: searchResult.from_cache || false,
       search_signature: searchResult.search_signature,
       searchDuration: `${duration}ms`,
@@ -103,11 +101,13 @@ res.json({
 // HOTEL SEARCH - POST (API)
 // ================================
 
-router.post("/search", async (req, res) => {
+router.post("/search", validateRegionId, validateSearchParams, async (req, res) => {
   const startTime = Date.now();
   const {
     userId,
+    region_id,
     destination,
+    destination_label,
     checkin,
     checkout,
     guests,
@@ -119,7 +119,9 @@ router.post("/search", async (req, res) => {
 
   console.log("🔍 === ETG API SEARCH REQUEST (POST) ===");
   console.log(`👤 User ID: ${userId}`);
-  console.log(`🗺️ Destination: ${destination}`);
+  console.log(`🔢 Region ID: ${region_id}`);
+  console.log(`🗺️ Destination (legacy): ${destination}`);
+  console.log(`🏷️ Destination Label: ${destination_label}`);
   console.log(`📅 Check-in: ${checkin}`);
   console.log(`📅 Check-out: ${checkout}`);
   console.log(`👥 Guests: ${JSON.stringify(guests)}`);
@@ -127,21 +129,15 @@ router.post("/search", async (req, res) => {
   console.log(`💰 Currency: ${currency}`);
   console.log(`📄 Page: ${page}`);
 
-  // Validation
-  if (!destination || !checkin || !checkout || !guests) {
-    console.log("❌ Missing required parameters");
-    return res.status(400).json({
-      success: false,
-      error: "Missing required fields: destination, checkin, checkout, guests",
-      hotels: [],
-      totalHotels: 0,
-    });
+  if (req.deprecated_params) {
+    console.warn(`⚠️ DEPRECATED USAGE: ${req.deprecated_params.message}`);
   }
 
   try {
-    // Execute search with caching
     const searchResult = await executeSearch({
-      destination,
+      region_id: region_id || undefined,
+      destination: destination || undefined,
+      destination_label: destination_label || undefined,
       checkin,
       checkout,
       guests,
@@ -151,6 +147,10 @@ router.post("/search", async (req, res) => {
 
     const duration = Date.now() - startTime;
     console.log(`⏱️ POST Search completed in ${duration}ms`);
+
+    if (req.deprecated_params) {
+      searchResult._deprecated = req.deprecated_params;
+    }
 
     // Paginate results if needed
     if (page > 1 && searchResult.search_signature) {
