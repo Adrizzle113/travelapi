@@ -1,6 +1,7 @@
 /**
  * Search Service with Caching
  * Manages hotel searches with 3-tier caching strategy
+ * Supports: region_id, city names, and slug formats
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -32,8 +33,59 @@ function generateSearchSignature(params) {
 }
 
 /**
+ * Parse destination input to extract city name
+ * Handles multiple formats:
+ * - Numeric region_id: "2011"
+ * - City name: "Los Angeles"
+ * - Slug format: "united_states_of_america/los_angeles"
+ * 
+ * @param {string|number} destination - Destination in any format
+ * @returns {Object} - { type: 'region_id'|'city_name', value: string|number }
+ */
+function parseDestination(destination) {
+  if (!destination) {
+    return { type: null, value: null };
+  }
+
+  // Already a region_id number
+  if (typeof destination === 'number') {
+    return { type: 'region_id', value: destination };
+  }
+
+  const destStr = String(destination).trim();
+
+  // Check if it's a numeric string (region_id)
+  if (!isNaN(destStr) && Number.isInteger(Number(destStr))) {
+    return { type: 'region_id', value: Number(destStr) };
+  }
+
+  // Check if it's a slug format (country/city)
+  if (destStr.includes('/')) {
+    const parts = destStr.split('/');
+    const cityName = parts[parts.length - 1]
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+    
+    console.log(`📍 Parsed slug "${destStr}" → city name "${cityName}"`);
+    return { type: 'city_name', value: cityName };
+  }
+
+  // Regular city name
+  return { type: 'city_name', value: destStr };
+}
+
+/**
  * Execute hotel search with caching
- * @param {Object} searchParams
+ * @param {Object} searchParams - Search parameters
+ * @param {string|number} searchParams.destination - City name, region_id, or slug
+ * @param {number} searchParams.region_id - Direct region_id (optional)
+ * @param {string} searchParams.checkin - Check-in date (YYYY-MM-DD)
+ * @param {string} searchParams.checkout - Check-out date (YYYY-MM-DD)
+ * @param {Array} searchParams.guests - Guest configuration
+ * @param {string} searchParams.currency - Currency code (default: USD)
+ * @param {string} searchParams.residency - Residency code (default: us)
  * @returns {Promise<Object>} - Search results
  */
 export async function executeSearch(searchParams) {
@@ -43,23 +95,27 @@ export async function executeSearch(searchParams) {
     // Step 1: Resolve destination to region_id
     let region_id = searchParams.region_id;
     
-    // If no region_id, check destination parameter
+    // If no region_id provided, parse destination
     if (!region_id && searchParams.destination) {
-      // Check if destination is already a number (region_id from frontend autocomplete)
-      if (!isNaN(searchParams.destination) && Number.isInteger(Number(searchParams.destination))) {
-        region_id = Number(searchParams.destination);
+      const parsed = parseDestination(searchParams.destination);
+      
+      if (parsed.type === 'region_id') {
+        // Already a region_id
+        region_id = parsed.value;
         console.log(`✅ Using provided region_id: ${region_id}`);
-      } else {
-        // It's a city name string, resolve it
-        console.log(`🔍 Resolving destination: "${searchParams.destination}"`);
-        const resolved = await resolveDestination(searchParams.destination);
+      } else if (parsed.type === 'city_name') {
+        // Need to resolve city name to region_id
+        console.log(`🔍 Resolving destination: "${parsed.value}"`);
+        const resolved = await resolveDestination(parsed.value);
         
-        if (!resolved.region_id) {
-          throw new Error(`Destination not found: ${searchParams.destination}`);
+        if (!resolved || !resolved.region_id) {
+          throw new Error(`Destination not found: ${parsed.value}`);
         }
         
         region_id = resolved.region_id;
         console.log(`✅ Resolved to region_id: ${region_id} (${resolved.region_name})`);
+      } else {
+        throw new Error('Invalid destination format');
       }
     }
 
@@ -67,19 +123,20 @@ export async function executeSearch(searchParams) {
       throw new Error('region_id or destination is required');
     }
 
-    // Step 2: Generate cache signature
-    const fullParams = { 
-      ...searchParams, 
+    // Step 2: Prepare full search parameters
+    const fullParams = {
       region_id,
       checkin: searchParams.checkin,
       checkout: searchParams.checkout,
-      guests: searchParams.guests,
+      guests: searchParams.guests || [{ adults: 2, children: [] }],
       currency: searchParams.currency || 'USD',
       residency: searchParams.residency || 'us'
     };
+
+    // Step 3: Generate cache signature
     const signature = generateSearchSignature(fullParams);
 
-    // Step 3: Check cache
+    // Step 4: Check cache
     const cached = await getFromCache(signature);
     if (cached) {
       const cacheAge = Math.round((Date.now() - new Date(cached.cached_at).getTime()) / 1000);
@@ -95,18 +152,19 @@ export async function executeSearch(searchParams) {
 
     console.log(`⚠️ Cache MISS: ${signature} - calling ETG API`);
 
-    // Step 4: Call ETG API
+    // Step 5: Call ETG API
     console.log(`🔍 ETG Search: region_id=${region_id}, ${fullParams.checkin} → ${fullParams.checkout}`);
     const results = await searchHotels(fullParams);
 
-    // Step 5: Cache the results
+    // Step 6: Cache the results
     await saveToCache(signature, fullParams, results);
 
-    console.log(`✅ Search complete: ${results.hotels?.length || 0} hotels (${Date.now() - startTime}ms)`);
+    const hotelCount = results.hotels?.length || 0;
+    console.log(`✅ Search complete: ${hotelCount} hotels (${Date.now() - startTime}ms)`);
 
     return {
       hotels: results.hotels || [],
-      total_hotels: results.hotels?.length || 0,
+      total_hotels: hotelCount,
       from_cache: false,
       search_signature: signature
     };
@@ -147,17 +205,20 @@ async function getFromCache(signature) {
       data: { hit_count: { increment: 1 } }
     });
 
+    // Reconstruct hotel objects with rates
+    const hotels = cached.hotel_ids.map(id => ({
+      hotel_id: id,
+      ...(cached.rates_index[id] || {})
+    }));
+
     return {
-      hotels: cached.hotel_ids.map(id => ({
-        hotel_id: id,
-        ...(cached.rates_index[id] || {})
-      })),
+      hotels,
       total_hotels: cached.total_hotels,
       cached_at: cached.cached_at
     };
 
   } catch (error) {
-    console.error('Cache read error:', error);
+    console.error('❌ Cache read error:', error);
     return null;
   }
 }
@@ -179,6 +240,7 @@ async function saveToCache(signature, params, results) {
       const hotelId = hotel.hotel_id || hotel.id;
       rates_index[hotelId] = {
         min_rate: hotel.min_rate,
+        max_rate: hotel.max_rate,
         rates: hotel.rates || []
       };
     });
@@ -211,7 +273,8 @@ async function saveToCache(signature, params, results) {
     console.log(`💾 Cached search: ${signature} (${hotel_ids.length} hotels, TTL: 30min)`);
 
   } catch (error) {
-    console.error('Cache write error:', error);
+    console.error('❌ Cache write error:', error);
+    // Non-fatal - continue without caching
   }
 }
 
@@ -235,6 +298,7 @@ export async function paginateSearch(signature, page = 1, limit = 20) {
 
   return {
     hotels: pageHotels,
+    total_hotels: cached.total_hotels,
     pagination: {
       page,
       limit,
@@ -243,7 +307,8 @@ export async function paginateSearch(signature, page = 1, limit = 20) {
       has_next: end < cached.total_hotels,
       has_prev: page > 1
     },
-    from_cache: true
+    from_cache: true,
+    search_signature: signature
   };
 }
 
