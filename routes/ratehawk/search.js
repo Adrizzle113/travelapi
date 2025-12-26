@@ -4,7 +4,6 @@
  */
 
 import express from "express";
-import { validateSession } from "../../services/ratehawkLoginService.js";
 import { executeSearch, paginateSearch } from "../../services/search/searchService.js";
 
 const router = express.Router();
