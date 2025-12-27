@@ -8,7 +8,7 @@ const { PrismaClient } = pkg;
 
 // Import middleware
 import { requestTracker, errorHandler, getRequestStats, getRecentRequests } from "./middleware/requestMonitoring.js";
-import { healthCheck, detailedDiagnostics } from "./middleware/healthCheck.js";
+import { healthCheck, warmupServer, detailedDiagnostics } from "./middleware/healthCheck.js";
 
 const prisma = new PrismaClient();
 
@@ -106,6 +106,10 @@ initializeDatabase();
 // Health check endpoints
 app.get("/api/health", healthCheck);
 
+// Warmup endpoint for cold start mitigation
+app.post("/api/warmup", warmupServer);
+app.get("/api/warmup", warmupServer);
+
 // Diagnostic endpoints for troubleshooting
 app.get("/api/diagnostics", detailedDiagnostics);
 
@@ -135,6 +139,76 @@ app.get("/api/diagnostics/memory", (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   });
+});
+
+app.get("/api/diagnostics/services", async (req, res) => {
+  const diagnostics = {
+    timestamp: new Date().toISOString(),
+    services: {},
+    summary: {
+      healthy: 0,
+      degraded: 0,
+      down: 0
+    }
+  };
+
+  try {
+    const dbStart = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    const dbDuration = Date.now() - dbStart;
+
+    diagnostics.services.database = {
+      status: 'operational',
+      responseTime: dbDuration,
+      healthScore: dbDuration < 100 ? 100 : dbDuration < 500 ? 80 : 60
+    };
+    diagnostics.summary.healthy++;
+  } catch (error) {
+    diagnostics.services.database = {
+      status: 'down',
+      error: error.message,
+      healthScore: 0
+    };
+    diagnostics.summary.down++;
+  }
+
+  try {
+    const cacheCount = await prisma.searchCache.count();
+    const recentCaches = await prisma.searchCache.count({
+      where: {
+        cached_at: {
+          gte: new Date(Date.now() - 3600000)
+        }
+      }
+    });
+
+    diagnostics.services.cache = {
+      status: 'operational',
+      totalCached: cacheCount,
+      recentCaches,
+      healthScore: 100
+    };
+    diagnostics.summary.healthy++;
+  } catch (error) {
+    diagnostics.services.cache = {
+      status: 'degraded',
+      error: error.message,
+      healthScore: 50
+    };
+    diagnostics.summary.degraded++;
+  }
+
+  diagnostics.services.etg_api = {
+    status: 'unknown',
+    message: 'Use /api/health for ETG API status'
+  };
+
+  diagnostics.overallHealth = Math.round(
+    ((diagnostics.summary.healthy * 100) + (diagnostics.summary.degraded * 50)) /
+    (diagnostics.summary.healthy + diagnostics.summary.degraded + diagnostics.summary.down)
+  );
+
+  res.json(diagnostics);
 });
 
 // Test endpoint

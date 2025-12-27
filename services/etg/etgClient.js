@@ -1,9 +1,11 @@
 /**
  * ETG (Emerging Travel Group) API Client
  * Handles all communication with WorldOTA/ETG API
+ * Enhanced with retry logic and optimized timeouts
  */
 
-import axios from 'axios';
+import { createAxiosWithRetry } from '../../middleware/retryHandler.js';
+import { categorizeError } from '../../utils/errorHandler.js';
 
 // ETG API Configuration
 const ETG_BASE_URL = 'https://api.worldota.net/api/b2b/v3';
@@ -14,8 +16,17 @@ if (!ETG_API_KEY) {
   console.warn('⚠️ ETG_API_KEY not set - API calls will fail');
 }
 
-// Create axios instance with auth
-const apiClient = axios.create({
+// Timeout configurations optimized for different operations
+const TIMEOUTS = {
+  search: 30000,
+  hotelInfo: 15000,
+  hotelPage: 20000,
+  autocomplete: 8000,
+  default: 25000
+};
+
+// Create axios instance with auth and retry logic
+const apiClient = createAxiosWithRetry({
   baseURL: ETG_BASE_URL,
   auth: {
     username: ETG_PARTNER_ID,
@@ -24,48 +35,47 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 25000
+  timeout: TIMEOUTS.default,
+  maxRetries: 3
 });
 
 function formatAxiosError(error, operation) {
-  if (error.code === 'ECONNABORTED') {
-    return new Error(`${operation} timed out after 25s - ETG API is responding slowly`);
-  }
-  if (error.code === 'ETIMEDOUT') {
-    return new Error(`${operation} connection timeout - network issue`);
-  }
+  const categorized = categorizeError(error);
+  const enhancedError = new Error(categorized.message);
+
+  enhancedError.category = categorized.category;
+  enhancedError.statusCode = categorized.statusCode;
+  enhancedError.isRetryable = categorized.isRetryable;
+  enhancedError.operation = operation;
+  enhancedError.originalError = error;
+
   if (error.response) {
     const status = error.response.status;
     const errorData = error.response.data;
 
-    // Handle 400 Bad Request - often date validation issues
     if (status === 400) {
       const errorMessage = errorData?.message || errorData?.error || error.message;
 
-      // Check for date-related errors
       if (errorMessage && (
         errorMessage.toLowerCase().includes('date') ||
         errorMessage.toLowerCase().includes('checkin') ||
         errorMessage.toLowerCase().includes('checkout')
       )) {
-        return new Error(`${operation} failed - Invalid date: ${errorMessage}. Dates must be in the future (format: YYYY-MM-DD)`);
+        enhancedError.message = `${operation} failed - Invalid date: ${errorMessage}. Dates must be in the future (format: YYYY-MM-DD)`;
+        enhancedError.category = 'validation_error';
+      } else {
+        enhancedError.message = `${operation} failed - Invalid request: ${errorMessage}`;
       }
-
-      return new Error(`${operation} failed - Invalid request: ${errorMessage}`);
+    } else if (status === 503 || status === 502) {
+      enhancedError.message = `${operation} failed - ETG API temporarily unavailable (${status})`;
+    } else if (status === 429) {
+      enhancedError.message = `${operation} failed - rate limit exceeded`;
+    } else {
+      enhancedError.message = `${operation} failed with status ${status}: ${errorData?.message || error.message}`;
     }
-
-    if (status === 503 || status === 502) {
-      return new Error(`${operation} failed - ETG API temporarily unavailable (${status})`);
-    }
-    if (status === 429) {
-      return new Error(`${operation} failed - rate limit exceeded`);
-    }
-    return new Error(`${operation} failed with status ${status}: ${errorData?.message || error.message}`);
   }
-  if (error.request) {
-    return new Error(`${operation} failed - no response from ETG API (network issue)`);
-  }
-  return new Error(`${operation} failed: ${error.message}`);
+
+  return enhancedError;
 }
 
 /**
@@ -87,12 +97,14 @@ export async function searchHotels(params) {
       language: 'en',
       guests,
       currency
+    }, {
+      timeout: TIMEOUTS.search
     });
 
     if (response.data && response.data.status === 'ok') {
       const hotels = response.data.data?.hotels || [];
       console.log(`✅ ETG Search complete: ${hotels.length} hotels found`);
-      
+
       return {
         hotels,
         search_id: response.data.data?.search_id,
@@ -127,6 +139,8 @@ export async function getHotelInformation(hotelId, language = 'en') {
     const response = await apiClient.post('/hotel/info/static/', {
       hotel_id: hotelId,
       language
+    }, {
+      timeout: TIMEOUTS.hotelInfo
     });
 
     if (response.data && response.data.status === 'ok') {
@@ -162,6 +176,8 @@ export async function getHotelPage(hotelId, params) {
       language,
       guests,
       currency
+    }, {
+      timeout: TIMEOUTS.hotelPage
     });
 
     if (response.data && response.data.status === 'ok') {
@@ -189,6 +205,8 @@ export async function searchRegions(query) {
     const response = await apiClient.post('/search/serp/suggest/', {
       query: query,
       language: 'en'
+    }, {
+      timeout: TIMEOUTS.autocomplete
     });
 
     if (response.data && response.data.status === 'ok') {

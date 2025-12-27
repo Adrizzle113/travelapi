@@ -2,11 +2,13 @@
  * RateHawk Search Routes - ETG API Integration
  * Uses new ETG API with caching (Phase 1)
  * Supports both GET (frontend) and POST (API) methods
+ * Enhanced with standardized error handling and retry logic
  */
 
 import express from "express";
 import { executeSearch, paginateSearch } from "../../services/search/searchService.js";
 import { validateRegionId, validateSearchParams } from "../../middleware/validation.js";
+import { handleApiError } from "../../utils/errorHandler.js";
 
 const router = express.Router();
 
@@ -81,13 +83,23 @@ router.get("/search", async (req, res) => {
     const duration = Date.now() - startTime;
     console.error("💥 ETG search error (GET):", error);
 
+    if (error.category && error.isRetryable !== undefined) {
+      return handleApiError(error, req, res);
+    }
+
     res.status(500).json({
       success: false,
-      error: `Search failed: ${error.message}`,
+      error: {
+        message: `Search failed: ${error.message}`,
+        category: error.category || 'server_error',
+        isRetryable: error.isRetryable || false,
+        statusCode: error.statusCode || 500,
+        timestamp: new Date().toISOString()
+      },
       hotels: [],
       totalHotels: 0,
       searchDuration: `${duration}ms`,
-      timestamp: new Date().toISOString(),
+      requestId: req.requestId,
       debug: {
         destination,
         errorType: error.name || "Unknown",
@@ -182,13 +194,23 @@ router.post("/search", validateRegionId, validateSearchParams, async (req, res) 
     const duration = Date.now() - startTime;
     console.error("💥 ETG search error (POST):", error);
 
+    if (error.category && error.isRetryable !== undefined) {
+      return handleApiError(error, req, res);
+    }
+
     res.status(500).json({
       success: false,
-      error: `Search failed: ${error.message}`,
+      error: {
+        message: `Search failed: ${error.message}`,
+        category: error.category || 'server_error',
+        isRetryable: error.isRetryable || false,
+        statusCode: error.statusCode || 500,
+        timestamp: new Date().toISOString()
+      },
       hotels: [],
       totalHotels: 0,
       searchDuration: `${duration}ms`,
-      timestamp: new Date().toISOString(),
+      requestId: req.requestId,
       debug: {
         destination,
         errorType: error.name || "Unknown",
