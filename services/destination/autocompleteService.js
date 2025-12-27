@@ -1,13 +1,23 @@
 import axios from 'axios';
-import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 
-const prisma = new PrismaClient();
+let prisma = null;
+let prismaAvailable = false;
+
+try {
+  const { PrismaClient } = await import('@prisma/client');
+  prisma = new PrismaClient();
+  prismaAvailable = true;
+  console.log('✅ Prisma client initialized for autocomplete cache');
+} catch (error) {
+  console.warn('⚠️ Prisma not available, caching disabled:', error.message);
+  prismaAvailable = false;
+}
 
 const RATEHAWK_AUTOCOMPLETE_URL = 'https://www.ratehawk.com/api/site/multicomplete.json';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
-const ALLOWED_TYPES = new Set(['city', 'region']);
+const PREFERRED_TYPES = ['city', 'region', 'location', 'hotel_city', 'poi'];
 
 function generateCacheKey(query, locale) {
   const normalized = `${query.toLowerCase().trim()}:${locale}`;
@@ -15,38 +25,61 @@ function generateCacheKey(query, locale) {
 }
 
 function normalizeResult(item) {
-  if (!item || !item.region_id) return null;
+  if (!item) return null;
 
-  const type = item.type?.toLowerCase() || 'unknown';
+  const regionId = item.region_id || item.regionId || item.id || item.regionID;
 
-  let label = item.label || item.name || 'Unknown';
-  if (item.country_name && !label.includes(item.country_name)) {
-    label = `${label}, ${item.country_name}`;
+  if (!regionId) {
+    console.warn('⚠️ Skipping result without region_id:', JSON.stringify(item).substring(0, 200));
+    return null;
+  }
+
+  const type = (item.type || item.object_type || 'location').toLowerCase();
+
+  let label = item.label || item.name || item.fullName || item.full_name || 'Unknown';
+  const countryName = item.country_name || item.countryName || item.country;
+
+  if (countryName && !label.includes(countryName)) {
+    label = `${label}, ${countryName}`;
   }
 
   return {
     label,
-    region_id: parseInt(item.region_id, 10),
+    region_id: parseInt(regionId, 10),
     type,
-    country_code: item.country_code || item.country_iso_code || null,
-    country_name: item.country_name || null,
-    coordinates: item.coordinates || item.center || null,
+    country_code: item.country_code || item.countryCode || item.country_iso_code || null,
+    country_name: countryName || null,
+    coordinates: item.coordinates || item.center || item.location || null,
     _raw: process.env.NODE_ENV === 'production' ? undefined : item
   };
 }
 
 function filterAndSortResults(results, limit = 10) {
-  const filtered = results
-    .filter(r => r && ALLOWED_TYPES.has(r.type))
-    .slice(0, limit * 2);
+  if (!results || results.length === 0) return [];
 
-  const cities = filtered.filter(r => r.type === 'city');
-  const regions = filtered.filter(r => r.type === 'region');
+  const prioritized = [];
+  const other = [];
 
-  return [...cities, ...regions].slice(0, limit);
+  results.forEach(r => {
+    if (!r) return;
+    if (PREFERRED_TYPES.includes(r.type)) {
+      prioritized.push(r);
+    } else {
+      other.push(r);
+    }
+  });
+
+  const sorted = [...prioritized, ...other].slice(0, limit);
+  console.log(`🔍 Filtered ${results.length} results → ${sorted.length} (${prioritized.length} prioritized, ${other.length} other)`);
+
+  return sorted;
 }
 
 async function getFromCache(queryKey) {
+  if (!prismaAvailable || !prisma) {
+    return null;
+  }
+
   try {
     const cached = await prisma.autocompleteCache.findUnique({
       where: { query_key: queryKey }
@@ -72,6 +105,11 @@ async function getFromCache(queryKey) {
 }
 
 async function saveToCache(queryKey, query, locale, results) {
+  if (!prismaAvailable || !prisma) {
+    console.log('⚠️ Skipping cache write (Prisma not available)');
+    return;
+  }
+
   try {
     await prisma.autocompleteCache.upsert({
       where: { query_key: queryKey },
@@ -132,9 +170,15 @@ export async function searchDestinations(query, locale = 'en', limit = 10) {
     const rawResults = response.data?.regions || response.data || [];
     console.log(`🔍 RateHawk returned ${rawResults.length} results for "${query}"`);
 
+    if (rawResults.length > 0 && process.env.NODE_ENV !== 'production') {
+      console.log('📊 Sample RateHawk result:', JSON.stringify(rawResults[0], null, 2).substring(0, 500));
+    }
+
     const normalized = rawResults
       .map(normalizeResult)
       .filter(r => r !== null);
+
+    console.log(`📝 Normalized ${rawResults.length} → ${normalized.length} results`);
 
     const filtered = filterAndSortResults(normalized, limit * 2);
 
