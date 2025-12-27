@@ -88,6 +88,21 @@ export function validateSearchParams(req, res, next) {
     });
   }
 
+  // Validate dates are not in the past
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (checkinDate < today) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'checkin date cannot be in the past',
+      field: 'checkin',
+      received: checkin,
+      today: today.toISOString().split('T')[0],
+      code: 'CHECKIN_IN_PAST'
+    });
+  }
+
   if (checkoutDate <= checkinDate) {
     return res.status(400).json({
       error: 'Bad Request',

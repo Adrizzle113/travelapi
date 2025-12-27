@@ -62,7 +62,7 @@ curl -X GET "http://localhost:3001/api/destinations/autocomplete?query=Las%20Veg
 Use the region_id from autocomplete:
 
 ```bash
-curl -X GET "http://localhost:3001/api/ratehawk/search?destination=4898&checkin=2025-02-15&checkout=2025-02-17&guests=%5B%7B%22adults%22%3A2%2C%22children%22%3A%5B%5D%7D%5D"
+curl -X GET "http://localhost:3001/api/ratehawk/search?destination=4898&checkin=2026-03-15&checkout=2026-03-17&guests=%5B%7B%22adults%22%3A2%2C%22children%22%3A%5B%5D%7D%5D"
 ```
 
 Or using POST:
@@ -72,12 +72,14 @@ curl -X POST http://localhost:3001/api/ratehawk/search \
   -H "Content-Type: application/json" \
   -d '{
     "region_id": "4898",
-    "checkin": "2025-02-15",
-    "checkout": "2025-02-17",
+    "checkin": "2026-03-15",
+    "checkout": "2026-03-17",
     "guests": [{"adults": 2, "children": []}],
     "currency": "USD"
   }'
 ```
+
+> **Note:** Use future dates only (YYYY-MM-DD format). Dates in the past will be rejected.
 
 **Response:**
 ```json
@@ -120,8 +122,8 @@ curl -X POST http://localhost:3001/api/ratehawk/hotel/details \
   -H "Content-Type: application/json" \
   -d '{
     "hotelId": "lH7Y9",
-    "checkin": "2025-02-15",
-    "checkout": "2025-02-17",
+    "checkin": "2026-03-15",
+    "checkout": "2026-03-17",
     "guests": [{"adults": 2, "children": []}]
   }'
 ```
@@ -224,10 +226,19 @@ async function getHotelDetails(hotelId, checkin, checkout, guests) {
 const results = await searchDestinations('Las Vegas');
 const regionId = results[0].id; // "4898"
 
-const hotels = await searchHotels(regionId, '2025-02-15', '2025-02-17', [{adults: 2, children: []}]);
+// Generate future dates dynamically
+const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+const checkin = tomorrow.toISOString().split('T')[0];
+
+const dayAfter = new Date();
+dayAfter.setDate(dayAfter.getDate() + 3);
+const checkout = dayAfter.toISOString().split('T')[0];
+
+const hotels = await searchHotels(regionId, checkin, checkout, [{adults: 2, children: []}]);
 const firstHotel = hotels[0];
 
-const details = await getHotelDetails(firstHotel.id, '2025-02-15', '2025-02-17', [{adults: 2, children: []}]);
+const details = await getHotelDetails(firstHotel.id, checkin, checkout, [{adults: 2, children: []}]);
 console.log(details);
 ```
 
@@ -297,9 +308,9 @@ node test-complete-booking-flow.js
 1. **Always search first** - You cannot directly request hotel details without getting the hotel ID from search results first
 2. **Region IDs are numeric** - Not city names
 3. **Hotel IDs are alphanumeric** - Like "lH7Y9", not "caesars_palace"
-4. **Date format** - Always use YYYY-MM-DD format
+4. **Date format** - Always use YYYY-MM-DD format. **Dates MUST be in the future** - past dates will be rejected
 5. **Guests format** - Must be an array of objects: `[{adults: 2, children: []}]`
-6. **Caching** - Search results cached for 1 hour, hotel info cached for 7 days
+6. **Caching** - Search results cached for 30 minutes, hotel info cached for 7 days
 
 ---
 

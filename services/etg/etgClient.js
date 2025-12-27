@@ -36,13 +36,31 @@ function formatAxiosError(error, operation) {
   }
   if (error.response) {
     const status = error.response.status;
+    const errorData = error.response.data;
+
+    // Handle 400 Bad Request - often date validation issues
+    if (status === 400) {
+      const errorMessage = errorData?.message || errorData?.error || error.message;
+
+      // Check for date-related errors
+      if (errorMessage && (
+        errorMessage.toLowerCase().includes('date') ||
+        errorMessage.toLowerCase().includes('checkin') ||
+        errorMessage.toLowerCase().includes('checkout')
+      )) {
+        return new Error(`${operation} failed - Invalid date: ${errorMessage}. Dates must be in the future (format: YYYY-MM-DD)`);
+      }
+
+      return new Error(`${operation} failed - Invalid request: ${errorMessage}`);
+    }
+
     if (status === 503 || status === 502) {
       return new Error(`${operation} failed - ETG API temporarily unavailable (${status})`);
     }
     if (status === 429) {
       return new Error(`${operation} failed - rate limit exceeded`);
     }
-    return new Error(`${operation} failed with status ${status}: ${error.response.data?.message || error.message}`);
+    return new Error(`${operation} failed with status ${status}: ${errorData?.message || error.message}`);
   }
   if (error.request) {
     return new Error(`${operation} failed - no response from ETG API (network issue)`);

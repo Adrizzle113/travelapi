@@ -219,8 +219,15 @@ async function runCompleteFlow() {
   // Configuration - Using known region_id directly
   const regionName = 'Las Vegas';
   const regionId = '4898'; // Las Vegas region_id from RateHawk
-  const checkin = '2025-03-15';
-  const checkout = '2025-03-17';
+
+  // Generate dynamic dates (always in the future)
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const checkin = tomorrow.toISOString().split('T')[0];
+
+  const dayAfter = new Date();
+  dayAfter.setDate(dayAfter.getDate() + 3);
+  const checkout = dayAfter.toISOString().split('T')[0];
 
   logInfo(`Testing with: ${regionName} (Region ID: ${regionId})`);
   logInfo(`Dates: ${checkin} to ${checkout}`);
