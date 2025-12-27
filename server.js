@@ -3,7 +3,8 @@ dotenv.config();
 
 import express from "express";
 import cors from "cors";
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 
 // Import middleware
 import { requestTracker, errorHandler, getRequestStats, getRecentRequests } from "./middleware/requestMonitoring.js";
