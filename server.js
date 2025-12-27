@@ -3,7 +3,13 @@ dotenv.config();
 
 import express from "express";
 import cors from "cors";
-import { initializeDatabase } from "./config/database.js";
+import { PrismaClient } from '@prisma/client';
+
+// Import middleware
+import { requestTracker, errorHandler, getRequestStats, getRecentRequests } from "./middleware/requestMonitoring.js";
+import { healthCheck, detailedDiagnostics } from "./middleware/healthCheck.js";
+
+const prisma = new PrismaClient();
 
 // Import routes
 import authRoutes from "./routes/auth.js";
@@ -69,43 +75,64 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`📨 ${req.method} ${req.path}`);
-  next();
+// Request tracking and memory monitoring
+app.use(requestTracker);
+
+// Test database connection on startup
+async function initializeDatabase() {
+  try {
+    console.log('🔄 Testing database connection...');
+    await prisma.$connect();
+    console.log("✅ Database connected successfully");
+
+    const tableCheck = await prisma.$queryRaw`
+      SELECT COUNT(*) as count
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+    `;
+    console.log(`✅ Database tables accessible: ${tableCheck[0].count} tables found`);
+  } catch (error) {
+    console.error("❌ Database connection failed:", error.message);
+    console.error("⚠️ Server will start but database operations will fail");
+  }
+}
+
+initializeDatabase();
+
+// Health check endpoints
+app.get("/api/health", healthCheck);
+
+// Diagnostic endpoints for troubleshooting
+app.get("/api/diagnostics", detailedDiagnostics);
+
+app.get("/api/diagnostics/requests", (req, res) => {
+  const stats = getRequestStats();
+  const recent = getRecentRequests(50);
+  res.json({
+    stats,
+    recentRequests: recent,
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Initialize database
-initializeDatabase()
-  .then(() => {
-    console.log("✅ Database initialized successfully");
-  })
-  .catch((error) => {
-    console.error("❌ Database initialization failed:", error);
-  });
+app.get("/api/diagnostics/memory", (req, res) => {
+  const memory = process.memoryUsage();
+  const memoryMB = {
+    heapUsed: Math.round(memory.heapUsed / 1024 / 1024),
+    heapTotal: Math.round(memory.heapTotal / 1024 / 1024),
+    rss: Math.round(memory.rss / 1024 / 1024),
+    external: Math.round(memory.external / 1024 / 1024),
+    arrayBuffers: Math.round(memory.arrayBuffers / 1024 / 1024)
+  };
 
-// Health check endpoint
-app.get("/api/health", (req, res) => {
   res.json({
-    status: "ok",
-    message: "Travel API Server is running",
-    timestamp: new Date().toISOString(),
+    memory: memoryMB,
+    percentUsed: Math.round((memoryMB.heapUsed / memoryMB.heapTotal) * 100),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || "development",
-    services: {
-      database: "connected",
-      etg: process.env.ETG_PARTNER_ID ? "configured" : "not_configured",
-    },
-    endpoints: {
-      auth: "/api/auth/*",
-      ratehawk: "/api/ratehawk/*",
-      hotels: "/api/hotels/*",
-      users: "/api/users/*",
-      destinations: "/api/destinations/*",
-    },
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -145,19 +172,13 @@ app.use((req, res) => {
     error: "Endpoint not found",
     path: req.path,
     method: req.method,
+    requestId: req.requestId,
     timestamp: new Date().toISOString(),
   });
 });
 
-// Error handler
-app.use((err, req, res, next) => {
-  console.error("💥 Server error:", err);
-  res.status(500).json({
-    error: "Internal server error",
-    message: err.message,
-    timestamp: new Date().toISOString(),
-  });
-});
+// Global error handler with detailed logging
+app.use(errorHandler);
 
 // Start server
 app.listen(PORT, () => {

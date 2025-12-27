@@ -24,8 +24,31 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 120000 // 2 minutes for hotel searches
+  timeout: 25000
 });
+
+function formatAxiosError(error, operation) {
+  if (error.code === 'ECONNABORTED') {
+    return new Error(`${operation} timed out after 25s - ETG API is responding slowly`);
+  }
+  if (error.code === 'ETIMEDOUT') {
+    return new Error(`${operation} connection timeout - network issue`);
+  }
+  if (error.response) {
+    const status = error.response.status;
+    if (status === 503 || status === 502) {
+      return new Error(`${operation} failed - ETG API temporarily unavailable (${status})`);
+    }
+    if (status === 429) {
+      return new Error(`${operation} failed - rate limit exceeded`);
+    }
+    return new Error(`${operation} failed with status ${status}: ${error.response.data?.message || error.message}`);
+  }
+  if (error.request) {
+    return new Error(`${operation} failed - no response from ETG API (network issue)`);
+  }
+  return new Error(`${operation} failed: ${error.message}`);
+}
 
 /**
  * Search hotels by region
@@ -63,12 +86,13 @@ export async function searchHotels(params) {
     return { hotels: [], total_hotels: 0 };
 
   } catch (error) {
-    console.error('❌ ETG searchHotels error:', error.message);
+    const formattedError = formatAxiosError(error, 'Hotel search');
+    console.error('❌ ETG searchHotels error:', formattedError.message);
     if (error.response) {
       console.error('   Status:', error.response.status);
-      console.error('   Data:', error.response.data);
+      console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));
     }
-    throw new Error(`ETG search failed: ${error.message}`);
+    throw formattedError;
   }
 }
 
@@ -94,8 +118,9 @@ export async function getHotelInformation(hotelId, language = 'en') {
     throw new Error('Hotel info not found');
 
   } catch (error) {
-    console.error('❌ ETG getHotelInfo error:', error.message);
-    throw error;
+    const formattedError = formatAxiosError(error, 'Get hotel info');
+    console.error('❌ ETG getHotelInfo error:', formattedError.message);
+    throw formattedError;
   }
 }
 
@@ -128,8 +153,9 @@ export async function getHotelPage(hotelId, params) {
     throw new Error('Hotel page not found');
 
   } catch (error) {
-    console.error('❌ ETG getHotelPage error:', error.message);
-    throw error;
+    const formattedError = formatAxiosError(error, 'Get hotel page');
+    console.error('❌ ETG getHotelPage error:', formattedError.message);
+    throw formattedError;
   }
 }
 
