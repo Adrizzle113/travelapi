@@ -178,15 +178,6 @@ export async function executeSearch(searchParams) {
     const etgDuration = Date.now() - etgStartTime;
     console.log(`⏱️ [${requestId}] ETG API responded in ${etgDuration}ms`);
 
-    // Validate ETG response data
-    const hotels = results.hotels || [];
-    const hotelsWithStaticVm = hotels.filter(h => h.static_vm).length;
-    console.log(`📊 [${requestId}] ETG returned ${hotels.length} hotels`);
-    console.log(`   ✓ Hotels with static_vm: ${hotelsWithStaticVm}`);
-    if (hotelsWithStaticVm < hotels.length) {
-      console.warn(`   ⚠️ Hotels without static_vm: ${hotels.length - hotelsWithStaticVm}`);
-    }
-
     // Step 6: Cache the results
     await saveToCache(signature, fullParams, results);
 
@@ -241,25 +232,11 @@ async function getFromCache(signature) {
       data: { hit_count: { increment: 1 } }
     });
 
-    // Reconstruct complete hotel objects from cached data
-    const hotels = cached.hotel_ids.map(id => {
-      const hotelData = cached.rates_index[id];
-      if (!hotelData) {
-        console.warn(`⚠️ Missing hotel data for ID: ${id}`);
-        return { hotel_id: id };
-      }
-      return hotelData;
-    });
-
-    // Validate data integrity
-    const hotelsWithStaticVm = hotels.filter(h => h.static_vm).length;
-    const hotelsWithoutStaticVm = hotels.length - hotelsWithStaticVm;
-
-    console.log(`   ✓ Retrieved ${hotels.length} hotels from cache`);
-    console.log(`   ✓ Hotels with static_vm: ${hotelsWithStaticVm}`);
-    if (hotelsWithoutStaticVm > 0) {
-      console.warn(`   ⚠️ Hotels without static_vm: ${hotelsWithoutStaticVm}`);
-    }
+    // Reconstruct hotel objects with rates
+    const hotels = cached.hotel_ids.map(id => ({
+      hotel_id: id,
+      ...(cached.rates_index[id] || {})
+    }));
 
     return {
       hotels,
@@ -283,32 +260,17 @@ async function saveToCache(signature, params, results) {
   try {
     const hotels = results.hotels || [];
     const hotel_ids = hotels.map(h => h.hotel_id || h.id);
-
-    // Store complete hotel data including static_vm and all metadata
-    const hotels_data = {};
+    
+    // Build rates index for quick lookup
+    const rates_index = {};
     hotels.forEach(hotel => {
       const hotelId = hotel.hotel_id || hotel.id;
-      hotels_data[hotelId] = {
-        hotel_id: hotelId,
-        name: hotel.name,
-        address: hotel.address,
-        star_rating: hotel.star_rating,
-        kind: hotel.kind,
-        region: hotel.region,
-        images: hotel.images,
-        static_vm: hotel.static_vm,
+      rates_index[hotelId] = {
         min_rate: hotel.min_rate,
         max_rate: hotel.max_rate,
-        rates: hotel.rates || [],
-        payment_methods: hotel.payment_methods,
-        amenity_groups: hotel.amenity_groups,
-        facts: hotel.facts
+        rates: hotel.rates || []
       };
     });
-
-    // Count hotels with static_vm for verification
-    const hotelsWithStaticVm = hotels.filter(h => h.static_vm).length;
-    const hotelsWithoutStaticVm = hotels.length - hotelsWithStaticVm;
 
     await prisma.searchCache.upsert({
       where: { search_signature: signature },
@@ -317,7 +279,7 @@ async function saveToCache(signature, params, results) {
         region_id: params.region_id,
         total_hotels: hotel_ids.length,
         hotel_ids,
-        rates_index: hotels_data,
+        rates_index,
         etg_search_id: results.search_id || signature,
         cached_at: new Date(),
         expires_at: new Date(Date.now() + SEARCH_CACHE_TTL),
@@ -329,17 +291,13 @@ async function saveToCache(signature, params, results) {
         region_id: params.region_id,
         total_hotels: hotel_ids.length,
         hotel_ids,
-        rates_index: hotels_data,
+        rates_index,
         etg_search_id: results.search_id || signature,
         expires_at: new Date(Date.now() + SEARCH_CACHE_TTL)
       }
     });
 
     console.log(`💾 Cached search: ${signature} (${hotel_ids.length} hotels, TTL: 30min)`);
-    console.log(`   ✓ Hotels with static_vm: ${hotelsWithStaticVm}`);
-    if (hotelsWithoutStaticVm > 0) {
-      console.warn(`   ⚠️ Hotels without static_vm: ${hotelsWithoutStaticVm}`);
-    }
 
   } catch (error) {
     console.error('❌ Cache write error:', error);
