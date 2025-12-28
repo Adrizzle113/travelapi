@@ -80,7 +80,8 @@ async function getFromCache(hotel_id, language) {
       return null;
     }
 
-    return {
+    // Return complete data including static_vm from raw_data
+    const result = {
       hotel_id: cached.hotel_id,
       name: cached.name,
       address: cached.address,
@@ -94,6 +95,24 @@ async function getFromCache(hotel_id, language) {
       cached_at: cached.cached_at
     };
 
+    // Add static_vm and other fields from raw_data if available
+    if (cached.raw_data) {
+      result.static_vm = cached.raw_data.static_vm;
+      result.metapolicy_extra_info = cached.raw_data.metapolicy_extra_info;
+      result.metapolicy_struct = cached.raw_data.metapolicy_struct;
+      result.payment_methods = cached.raw_data.payment_methods;
+      result.kind = cached.raw_data.kind;
+      result.region = cached.raw_data.region;
+      result.facts = cached.raw_data.facts;
+    }
+
+    // Log if static_vm is missing
+    if (!result.static_vm) {
+      console.warn(`⚠️ Hotel ${cached.hotel_id} cached without static_vm data`);
+    }
+
+    return result;
+
   } catch (error) {
     console.error('Hotel cache read error:', error);
     return null;
@@ -105,6 +124,12 @@ async function getFromCache(hotel_id, language) {
  */
 async function saveToCache(hotel_id, language, hotelData) {
   try {
+    // Validate that we have static_vm data
+    const hasStaticVm = !!hotelData.static_vm;
+    if (!hasStaticVm) {
+      console.warn(`⚠️ Caching hotel ${hotel_id} without static_vm data`);
+    }
+
     await prisma.hotelStaticCache.upsert({
       where: {
         hotel_id_language: {
@@ -143,7 +168,7 @@ async function saveToCache(hotel_id, language, hotelData) {
       }
     });
 
-    console.log(`💾 Cached hotel: ${hotel_id} (${language}, TTL: 7 days)`);
+    console.log(`💾 Cached hotel: ${hotel_id} (${language}, TTL: 7 days${hasStaticVm ? ', includes static_vm' : ', NO static_vm'})`);
 
   } catch (error) {
     console.error('Hotel cache write error:', error);
