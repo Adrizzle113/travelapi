@@ -76,20 +76,47 @@ model AutocompleteCache {
 }
 
 model User {
-  id                        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  email                     String   @unique @db.VarChar(255)
-  first_name                String?  @db.VarChar(100)
-  last_name                 String?  @db.VarChar(100)
-  phone_number              String?  @db.VarChar(20)
-  agency_name               String?  @db.VarChar(255)
-  legal_name                String?  @db.VarChar(255)
-  city                      String?  @db.VarChar(100)
-  address                   String?  @db.Text
-  actual_address_matches    Boolean? @default(true)
-  itn                       String?  @db.VarChar(100)
-  logo_url                  String?  @db.Text
-  created_at                DateTime @default(now()) @db.Timestamp(6)
+  id                        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email                     String    @unique @db.VarChar(255)
+  password                  String?   @db.Text
+  first_name                String?   @db.VarChar(100)
+  last_name                 String?   @db.VarChar(100)
+  phone_number              String?   @db.VarChar(20)
+  agency_name               String?   @db.VarChar(255)
+  legal_name                String?   @db.VarChar(255)
+  city                      String?   @db.VarChar(100)
+  address                   String?   @db.Text
+  actual_address_matches    Boolean?  @default(true)
+  itn                       String?   @db.VarChar(100)
+  logo_url                  String?   @db.Text
+  dummy_email               String?   @db.VarChar(255)
+  otp                       String?   @db.VarChar(10)
+  email_verification        String?   @default("unverified") @db.VarChar(20)
+  status                    String?   @default("pending") @db.VarChar(20)
+  last_login                DateTime? @db.Timestamp(6)
+  ratehawk_email            String?   @db.VarChar(255)
+  created_at                DateTime  @default(now()) @db.Timestamp(6)
+
+  auth_logs                 AuthLog[]
 
   @@index([email], name: "idx_users_email")
   @@map("users")
+}
+
+model AuthLog {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id         String   @db.Uuid
+  email           String   @db.VarChar(255)
+  success         Boolean
+  error_message   String?  @db.Text
+  duration        Int?
+  session_id      String?  @db.VarChar(255)
+  final_url       String?  @db.Text
+  timestamp       DateTime @default(now()) @db.Timestamp(6)
+
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], name: "idx_auth_logs_user")
+  @@index([timestamp], name: "idx_auth_logs_timestamp")
+  @@map("auth_logs")
 }
