@@ -1,18 +1,25 @@
 /**
- * Search Service with Caching
+ * Search Service with Caching and Static Info Enrichment
  * Manages hotel searches with 3-tier caching strategy
  * Supports: region_id, city names, and slug formats
+ * Enriches results with static_vm data from RateHawk hotel/info endpoint
  */
 
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
+import axios from 'axios';
 import { searchHotels } from '../etg/etgClient.js';
 import { resolveDestination } from '../destination/destinationResolver.js';
 
 const prisma = new PrismaClient();
 
-// Cache TTL: 30 minutes for search results
 const SEARCH_CACHE_TTL = 30 * 60 * 1000;
+const STATIC_INFO_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+
+const RATEHAWK_CREDENTIALS = {
+  username: process.env.RATEHAWK_USERNAME || "11606",
+  password: process.env.RATEHAWK_PASSWORD || "ff9702bb-ba93-4996-a31e-547983c51530",
+};
 
 /**
  * Generate search signature (cache key)
@@ -74,6 +81,175 @@ function parseDestination(destination) {
 
   // Regular city name
   return { type: 'city_name', value: destStr };
+}
+
+/**
+ * Extract amenity strings from RateHawk amenity_groups structure
+ */
+function extractAmenityStrings(amenityGroups) {
+  const amenities = [];
+
+  if (!Array.isArray(amenityGroups)) return amenities;
+
+  amenityGroups.forEach(group => {
+    if (group.amenities && Array.isArray(group.amenities)) {
+      group.amenities.forEach(amenity => {
+        if (amenity.name) {
+          amenities.push(amenity.name);
+        }
+      });
+    }
+  });
+
+  return amenities;
+}
+
+/**
+ * Extract description from RateHawk description_struct
+ */
+function extractDescription(descriptionStruct) {
+  if (!descriptionStruct) return '';
+
+  const parts = [];
+
+  if (Array.isArray(descriptionStruct)) {
+    descriptionStruct.forEach(section => {
+      if (section.paragraphs && Array.isArray(section.paragraphs)) {
+        section.paragraphs.forEach(p => {
+          if (typeof p === 'string') parts.push(p);
+        });
+      }
+    });
+  }
+
+  return parts.join('\n\n');
+}
+
+/**
+ * Fetch static info for a single hotel with caching
+ */
+async function fetchHotelStaticInfo(hotelId, language = 'en') {
+  try {
+    const cached = await prisma.hotelStaticCache.findUnique({
+      where: {
+        hotel_id_language: { hotel_id: hotelId, language: language }
+      }
+    });
+
+    if (cached && new Date(cached.expires_at) > new Date()) {
+      console.log(`✅ Static cache HIT: ${hotelId}`);
+      return cached.raw_data;
+    }
+
+    console.log(`⚠️ Static cache MISS: ${hotelId} - calling RateHawk API`);
+
+    const response = await axios.post(
+      'https://api.worldota.net/api/b2b/v3/hotel/info/',
+      { id: hotelId, language: language },
+      {
+        auth: RATEHAWK_CREDENTIALS,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'BookjaAPI/1.0',
+        },
+        timeout: 10000
+      }
+    );
+
+    const hotelData = response.data?.data;
+    if (!hotelData) return null;
+
+    await prisma.hotelStaticCache.upsert({
+      where: {
+        hotel_id_language: { hotel_id: hotelId, language: language }
+      },
+      update: {
+        name: hotelData.name,
+        address: hotelData.address,
+        city: hotelData.city,
+        country: hotelData.country,
+        star_rating: hotelData.star_rating,
+        images: hotelData.images || [],
+        amenities: extractAmenityStrings(hotelData.amenity_groups || []),
+        description: extractDescription(hotelData.description_struct),
+        coordinates: {
+          latitude: hotelData.latitude,
+          longitude: hotelData.longitude
+        },
+        raw_data: hotelData,
+        cached_at: new Date(),
+        expires_at: new Date(Date.now() + STATIC_INFO_CACHE_TTL)
+      },
+      create: {
+        hotel_id: hotelId,
+        language: language,
+        name: hotelData.name,
+        address: hotelData.address,
+        city: hotelData.city,
+        country: hotelData.country,
+        star_rating: hotelData.star_rating,
+        images: hotelData.images || [],
+        amenities: extractAmenityStrings(hotelData.amenity_groups || []),
+        description: extractDescription(hotelData.description_struct),
+        coordinates: {
+          latitude: hotelData.latitude,
+          longitude: hotelData.longitude
+        },
+        raw_data: hotelData,
+        expires_at: new Date(Date.now() + STATIC_INFO_CACHE_TTL)
+      }
+    });
+
+    console.log(`💾 Cached static info for ${hotelId}`);
+    return hotelData;
+
+  } catch (error) {
+    console.error(`❌ Failed to fetch static info for ${hotelId}:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Enrich hotel array with static_vm data
+ */
+async function enrichHotelsWithStaticInfo(hotels, language = 'en') {
+  console.log(`🔧 Enriching ${hotels.length} hotels with static info...`);
+
+  const enrichedHotels = await Promise.allSettled(
+    hotels.map(async (hotel) => {
+      const hotelId = hotel.hotel_id || hotel.id;
+
+      if (!hotelId) {
+        console.warn('⚠️ Hotel missing ID, skipping enrichment');
+        return hotel;
+      }
+
+      try {
+        const staticInfo = await fetchHotelStaticInfo(hotelId, language);
+
+        if (staticInfo) {
+          return {
+            ...hotel,
+            static_vm: staticInfo
+          };
+        }
+
+        return hotel;
+      } catch (error) {
+        console.error(`Error enriching hotel ${hotelId}:`, error.message);
+        return hotel;
+      }
+    })
+  );
+
+  const results = enrichedHotels
+    .filter(result => result.status === 'fulfilled')
+    .map(result => result.value);
+
+  const enrichedCount = results.filter(h => h.static_vm).length;
+  console.log(`✅ Enriched ${enrichedCount}/${hotels.length} hotels with static data`);
+
+  return results;
 }
 
 /**
@@ -178,21 +354,35 @@ export async function executeSearch(searchParams) {
     const etgDuration = Date.now() - etgStartTime;
     console.log(`⏱️ [${requestId}] ETG API responded in ${etgDuration}ms`);
 
-    // Step 6: Cache the results
-    await saveToCache(signature, fullParams, results);
+    // Step 6: Enrich hotels with static info
+    const enrichStartTime = Date.now();
+    const enrichedHotels = await enrichHotelsWithStaticInfo(
+      results.hotels || [],
+      searchParams.language || 'en'
+    );
+    const enrichDuration = Date.now() - enrichStartTime;
+    console.log(`⏱️ [${requestId}] Enrichment completed in ${enrichDuration}ms`);
 
-    const hotelCount = results.hotels?.length || 0;
+    // Step 7: Cache the enriched results
+    const enrichedResults = {
+      ...results,
+      hotels: enrichedHotels
+    };
+    await saveToCache(signature, fullParams, enrichedResults);
+
+    const hotelCount = enrichedHotels.length;
     const totalDuration = Date.now() - startTime;
-    console.log(`✅ [${requestId}] Search complete: ${hotelCount} hotels (total: ${totalDuration}ms, ETG: ${etgDuration}ms)`);
+    console.log(`✅ [${requestId}] Search complete: ${hotelCount} hotels (total: ${totalDuration}ms, ETG: ${etgDuration}ms, enrich: ${enrichDuration}ms)`);
 
     return {
-      hotels: results.hotels || [],
+      hotels: enrichedHotels,
       total_hotels: hotelCount,
       from_cache: false,
       search_signature: signature,
       request_id: requestId,
       resolution_method: resolutionMethod,
-      etg_duration_ms: etgDuration
+      etg_duration_ms: etgDuration,
+      enrich_duration_ms: enrichDuration
     };
 
   } catch (error) {
@@ -232,11 +422,19 @@ async function getFromCache(signature) {
       data: { hit_count: { increment: 1 } }
     });
 
-    // Reconstruct hotel objects with rates
-    const hotels = cached.hotel_ids.map(id => ({
-      hotel_id: id,
-      ...(cached.rates_index[id] || {})
-    }));
+    // Reconstruct hotel objects with rates and enrich with static_vm
+    const hotels = [];
+    for (const hotelId of cached.hotel_ids) {
+      const rateData = cached.rates_index[hotelId];
+      const staticInfo = await fetchHotelStaticInfo(hotelId, 'en');
+
+      hotels.push({
+        hotel_id: hotelId,
+        id: hotelId,
+        ...(rateData || {}),
+        static_vm: staticInfo
+      });
+    }
 
     return {
       hotels,
