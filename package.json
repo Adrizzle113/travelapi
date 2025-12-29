@@ -22,6 +22,7 @@
   "author": "Your Name",
   "license": "ISC",
   "dependencies": {
+    "@mongodb-js/zstd": "^7.0.0",
     "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.57.2",
     "axios": "^1.12.2",
