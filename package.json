@@ -38,6 +38,7 @@
     "nodemailer": "^7.0.6",
     "postmark": "^4.0.5",
     "prisma": "^5.22.0",
+    "stream-json": "^1.9.1",
     "uid": "^2.0.2",
     "uuid": "^13.0.0"
   },
