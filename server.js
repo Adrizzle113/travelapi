@@ -18,6 +18,7 @@ import ratehawkRoutes from "./routes/ratehawk/index.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import { BookingFormCreationRoute } from "./src/routes/createBookingFormRoutes.js";
 import DestinationRoute from "./src/routes/destinationRoute.js";
+import sessionsRoutes from "./routes/sessions.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,15 +26,20 @@ const PORT = process.env.PORT || 3001;
 // CORS configuration
 const allowedOrigins = [
   "http://localhost:8080",
-  "https://bookja.vercel.app",
-  "https://travel-frontend-two-nu.vercel.app",
   "http://localhost:8081",
+  "http://localhost:3000",
+  "http://localhost:5173", // Vite default dev server
   "http://127.0.0.1:8080",
   "http://127.0.0.1:8081",
-  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+  "https://bookja.vercel.app",
+  "https://travel-frontend-two-nu.vercel.app",
   "https://lovable.dev",
   /^https:\/\/.*\.lovable\.app$/,
-  /^https:\/\/id-preview--.*\.lovable\.app$/
+  /^https:\/\/id-preview--.*\.lovable\.app$/,
+  /^https:\/\/.*\.vercel\.app$/,
+  /^https:\/\/.*\.netlify\.app$/
 ];
 
 const corsOptions = {
@@ -229,6 +235,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/booking-form", BookingFormCreationRoute);
 app.use("/api/destinations", DestinationRoute);
 app.use("/api/destination", DestinationRoute);
+app.use("/api/sessions", sessionsRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
