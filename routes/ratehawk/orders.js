@@ -20,6 +20,7 @@ import {
   validateOrderFinish,
   validateOrderId
 } from "../../middleware/validation.js";
+import { normalizeResidency } from "../../utils/residencyNormalizer.js";
 
 const router = express.Router();
 
@@ -57,9 +58,12 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   const startTime = Date.now();
   const { userId, book_hash, residency = "us", currency = "USD" } = req.body;
 
+  // Normalize residency parameter (e.g., "US" → "us", "en-us" → "us")
+  const normalizedResidency = normalizeResidency(residency);
+
   console.log("🔒 === PREBOOK REQUEST ===");
   console.log(`Book hash: ${book_hash?.substring(0, 20)}...`);
-  console.log(`Residency: ${residency}`);
+  console.log(`🌍 Residency: ${residency} → ${normalizedResidency} (normalized)`);
   console.log(`Currency: ${currency}`);
 
   // Validation
@@ -89,7 +93,7 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   }
 
   try {
-    const result = await prebookRate(book_hash, residency, currency);
+    const result = await prebookRate(book_hash, normalizedResidency, currency);
 
     const duration = Date.now() - startTime;
 
