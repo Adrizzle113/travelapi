@@ -5,7 +5,7 @@
 
 import express from "express";
 import { getHotelInformation } from "../../services/hotel/hotelInfoService.js";
-import { getHotelPage } from "../../services/etg/etgClient.js";
+import { getHotelWithRates } from "../../services/etg/etgClient.js";
 import { normalizeResidency } from "../../utils/residencyNormalizer.js";
 
 const router = express.Router();
@@ -61,7 +61,7 @@ router.post("/hotel/details", async (req, res) => {
     
     if (finalCheckin && finalCheckout) {
       // ✅ Convert residency to uppercase for /search/hp/ endpoint
-      const hotelPage = await getHotelPage(finalHotelId, {
+      const hotel = await getHotelWithRates(finalHotelId, {
         checkin: finalCheckin,
         checkout: finalCheckout,
         guests: finalGuests,
@@ -70,18 +70,11 @@ router.post("/hotel/details", async (req, res) => {
         residency: normalizedResidency.toUpperCase()  // ✅ Uppercase for /search/hp/
       });
       
-      // Extract data from hotel page
-      // ✅ /search/hp/ endpoint returns rates with book_hash (h-...) field
-      // Handle both response structures: direct rates or nested in hotels array
-      if (hotelPage.hotels && Array.isArray(hotelPage.hotels) && hotelPage.hotels.length > 0) {
-        // Response structure: { hotels: [{ rates: [...], room_groups: [...] }] }
-        rates = hotelPage.hotels[0].rates || [];
-        room_groups = hotelPage.hotels[0].room_groups || [];
-      } else {
-        // Response structure: { rates: [...], room_groups: [...] }
-        rates = hotelPage.rates || [];
-        room_groups = hotelPage.room_groups || [];
-      }
+      // Extract data from hotel object
+      // ✅ /search/hp/ endpoint returns hotel with rates and room_groups
+      // getHotelWithRates returns a single hotel object directly
+      rates = hotel.rates || [];
+      room_groups = hotel.room_groups || [];
       
       // Verify book_hash is present in rates (for debugging)
       if (rates.length > 0 && !rates[0].book_hash) {
