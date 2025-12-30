@@ -160,12 +160,13 @@ function formatAxiosError(error, operation) {
 
 /**
  * Prebook a rate (lock rate & validate availability)
- * @param {string} book_hash - Rate hash from hotel details
- * @param {string} residency - Residency code (e.g., 'us', 'en-us')
- * @param {string} currency - Currency code (e.g., 'USD')
+ * @param {string} book_hash - Book hash from hotel page (h-...) or prebooked hash (p-...)
+ * @param {Array} guests - Guests array [{ adults: 2, children: [] }]
+ * @param {string} residency - Residency code (uppercase, e.g., 'US')
+ * @param {string} language - Language code (default: 'en')
  * @returns {Promise<Object>} - Prebook response with booking_hash
  */
-export async function prebookRate(book_hash, residency = 'us', currency = 'USD') {
+export async function prebookRate(book_hash, guests, residency = 'US', language = 'en') {
   const endpoint = '/hotel/prebook/';
 
   try {
@@ -176,13 +177,32 @@ export async function prebookRate(book_hash, residency = 'us', currency = 'USD')
       await waitForRateLimit(endpoint);
     }
 
-    console.log(`🔒 ETG prebookRate: book_hash=${book_hash?.substring(0, 20)}... (${rateLimitCheck.remaining || '?'} requests remaining)`);
+    // Validate hash format (must be book_hash h-... or prebooked hash p-..., not match_hash m-...)
+    if (!book_hash || (!book_hash.startsWith('h-') && !book_hash.startsWith('p-'))) {
+      throw new Error(`Invalid hash format for prebook. Expected book_hash (h-...) or prebooked hash (p-...), got: ${book_hash}`);
+    }
 
-    const response = await apiClient.post(endpoint, {
-      book_hash,
-      residency,
-      currency
-    }, {
+    // Validate guests format
+    if (!Array.isArray(guests) || guests.length === 0) {
+      throw new Error('Guests must be a non-empty array');
+    }
+
+    // Ensure residency is uppercase for prebook
+    const normalizedResidency = (residency || 'US').toUpperCase();
+
+    // Build request body with correct parameter names (ETG API expects 'hash' not 'book_hash')
+    const requestBody = {
+      hash: book_hash,  // ✅ Use 'hash' not 'book_hash'
+      guests: guests,   // ✅ Required
+      residency: normalizedResidency,  // ✅ Uppercase
+      language: language || 'en'  // ✅ Required
+    };
+    
+    console.log(`🔒 ETG prebookRate: hash=${book_hash?.substring(0, 20)}... (${rateLimitCheck.remaining || '?'} requests remaining)`);
+    console.log(`📤 Sending to ETG API ${endpoint}:`);
+    console.log(`   Request body:`, JSON.stringify(requestBody, null, 2));
+
+    const response = await apiClient.post(endpoint, requestBody, {
       timeout: TIMEOUTS.prebook
     });
 
@@ -190,7 +210,14 @@ export async function prebookRate(book_hash, residency = 'us', currency = 'USD')
     recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
-      console.log(`✅ Prebook successful: booking_hash=${response.data.data?.booking_hash?.substring(0, 20)}...`);
+      const prebookedHash = response.data.data?.hotels?.[0]?.rates?.[0]?.book_hash;
+      const priceChanged = response.data.data?.changes?.price_changed;
+      
+      console.log(`✅ Prebook successful: prebooked_hash=${prebookedHash?.substring(0, 20)}...`);
+      if (priceChanged) {
+        console.warn(`⚠️ Price changed during prebook!`);
+      }
+      
       return response.data.data;
     }
 
@@ -201,7 +228,7 @@ export async function prebookRate(book_hash, residency = 'us', currency = 'USD')
     console.error('❌ ETG prebookRate error:', formattedError.message);
     if (error.response) {
       console.error('   Status:', error.response.status);
-      console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));
+      console.error('   Response data:', JSON.stringify(error.response.data, null, 2));
     }
     throw formattedError;
   }

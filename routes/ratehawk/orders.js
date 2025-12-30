@@ -56,14 +56,24 @@ function getUserIp(req) {
 
 router.post("/prebook", validatePrebook, async (req, res) => {
   const startTime = Date.now();
-  const { userId, book_hash, residency = "us", currency = "USD" } = req.body;
+  const { 
+    userId, 
+    book_hash, 
+    guests = [{ adults: 2, children: [] }],  // ✅ Extract guests (required)
+    residency = "US",  // ✅ Default to uppercase for prebook
+    language = "en",  // ✅ Extract language (required)
+    currency = "USD"  // Not used in prebook but keep for logging
+  } = req.body;
 
-  // Normalize residency parameter (e.g., "US" → "us", "en-us" → "us")
+  // Normalize residency first (handles "en-us" → "us"), then convert to uppercase for prebook
   const normalizedResidency = normalizeResidency(residency);
+  const prebookResidency = normalizedResidency.toUpperCase();  // Prebook requires uppercase
 
   console.log("🔒 === PREBOOK REQUEST ===");
   console.log(`Book hash: ${book_hash?.substring(0, 20)}...`);
-  console.log(`🌍 Residency: ${residency} → ${normalizedResidency} (normalized)`);
+  console.log(`🌍 Residency: ${residency} → ${normalizedResidency} → ${prebookResidency} (normalized then uppercase for prebook)`);
+  console.log(`👥 Guests: ${JSON.stringify(guests)}`);
+  console.log(`🌐 Language: ${language}`);
   console.log(`Currency: ${currency}`);
 
   // Validation
@@ -78,22 +88,52 @@ router.post("/prebook", validatePrebook, async (req, res) => {
     });
   }
 
-  // Validate book_hash format (should start with 'h-' not 'rate_')
-  if (book_hash.startsWith('rate_')) {
+  // Validate hash format - must be book_hash (h-...) or prebooked hash (p-...)
+  // NOT match_hash (m-...) from search results
+  if (book_hash.startsWith('m-')) {
     return res.status(400).json({
       success: false,
       error: {
-        message: "Invalid book_hash format. Expected hash from rate object (e.g., 'h-...'), but received rate index. Use the 'book_hash' field from the rate object in hotel details response.",
+        message: "Invalid hash format. Use book_hash (h-...) from hotel page, not match_hash (m-...) from search results.",
+        code: "INVALID_HASH_FORMAT",
+        received: book_hash,
+        hint: "Call /api/ratehawk/hotel/details first to get book_hash, then use that for prebook."
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Validate hash format - should be h-... or p-...
+  if (!book_hash.startsWith('h-') && !book_hash.startsWith('p-')) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "Invalid book_hash format. Expected hash starting with 'h-' (book_hash) or 'p-' (prebooked hash).",
         code: "INVALID_BOOK_HASH_FORMAT",
         received: book_hash,
-        hint: "The book_hash should come from the rate object in the hotel details response, not the rate index."
+        hint: "The book_hash should come from the rate object in the hotel details response."
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Validate guests format
+  if (!Array.isArray(guests) || guests.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "guests must be a non-empty array",
+        code: "INVALID_GUESTS_FORMAT",
+        received: guests,
+        expected: "[{ adults: 2, children: [] }]"
       },
       timestamp: new Date().toISOString()
     });
   }
 
   try {
-    const result = await prebookRate(book_hash, normalizedResidency, currency);
+    // ✅ Pass guests and language to prebookRate (uppercase residency for prebook)
+    const result = await prebookRate(book_hash, guests, prebookResidency, language);
 
     const duration = Date.now() - startTime;
 
