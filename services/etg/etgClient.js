@@ -152,41 +152,40 @@ export async function searchHotels(params) {
  * @returns {Promise<Object>} - Hotel static data
  */
 export async function getHotelInformation(hotelId, language = 'en') {
-  const endpoint = '/hotel/static/';
+  const endpoint = '/hotel/static/';  // ✅ FIXED: Changed from /hotel/info/static/
 
-  export async function getHotelInformation(hotelId, language = 'en') {
-    const endpoint = '/hotel/static/';  // ✅ CORRECT!
-  
-    try {
-      const rateLimitCheck = checkRateLimit(endpoint);
-      if (!rateLimitCheck.allowed) {
-        console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
-        await waitForRateLimit(endpoint);
-      }
-  
-      console.log(`🏨 ETG getHotelInfo: ${hotelId} (${rateLimitCheck.remaining || '?'} requests remaining)`);
-  
-      const response = await apiClient.post('/hotel/static/', {  // ✅ CORRECT!
-        ids: [hotelId],  // ✅ CORRECT - plural "ids" and array format
-        language
-      }, {
-        timeout: TIMEOUTS.hotelInfo
-      });
-  
-      recordRequest(endpoint);
-  
-      if (response.data && response.data.status === 'ok') {
-        return response.data.data;
-      }
-  
-      throw new Error('Hotel info not found');
-  
-    } catch (error) {
-      const formattedError = formatAxiosError(error, 'Get hotel info');
-      console.error('❌ ETG getHotelInfo error:', formattedError.message);
-      throw formattedError;
+  try {
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
     }
+
+    console.log(`🏨 ETG getHotelInfo: ${hotelId} (${rateLimitCheck.remaining || '?'} requests remaining)`);
+
+    const response = await apiClient.post('/hotel/static/', {  // ✅ FIXED: Correct endpoint
+      ids: [hotelId],  // ✅ FIXED: Changed from hotel_id to ids (plural, array format)
+      language
+    }, {
+      timeout: TIMEOUTS.hotelInfo
+    });
+
+    // Record successful request
+    recordRequest(endpoint);
+
+    if (response.data && response.data.status === 'ok') {
+      return response.data.data;
+    }
+
+    throw new Error('Hotel info not found');
+
+  } catch (error) {
+    const formattedError = formatAxiosError(error, 'Get hotel info');
+    console.error('❌ ETG getHotelInfo error:', formattedError.message);
+    throw formattedError;
   }
+}
 
 /**
  * Get hotel page with rates
