@@ -74,6 +74,20 @@ router.post("/prebook", validatePrebook, async (req, res) => {
     });
   }
 
+  // Validate book_hash format (should start with 'h-' not 'rate_')
+  if (book_hash.startsWith('rate_')) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "Invalid book_hash format. Expected hash from rate object (e.g., 'h-...'), but received rate index. Use the 'book_hash' field from the rate object in hotel details response.",
+        code: "INVALID_BOOK_HASH_FORMAT",
+        received: book_hash,
+        hint: "The book_hash should come from the rate object in the hotel details response, not the rate index."
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
   try {
     const result = await prebookRate(book_hash, residency, currency);
 
@@ -89,6 +103,36 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Prebook error:", error);
+
+    // Check if it's a 404 from ETG API
+    if (error.response?.status === 404 || error.statusCode === 404) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: "Prebook endpoint not found or not accessible",
+          code: "PREBOOK_ENDPOINT_NOT_FOUND",
+          details: "The ETG API prebook endpoint returned 404. This may indicate: 1) The endpoint is not available with your API credentials, 2) The endpoint path has changed, or 3) Your API key doesn't have access to booking endpoints.",
+          etgError: error.response?.data?.error || "page not found",
+          hint: "Contact ETG support to verify your API credentials have access to booking endpoints."
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+    }
+
+    // Check if it's an authentication error
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          message: "API authentication failed",
+          code: "PREBOOK_AUTH_ERROR",
+          details: "Invalid ETG API credentials or insufficient permissions for prebook endpoint."
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+    }
 
     res.status(error.statusCode || 500).json({
       success: false,

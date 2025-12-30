@@ -5,6 +5,7 @@
 
 import { createAxiosWithRetry } from '../../middleware/retryHandler.js';
 import { categorizeError } from '../../utils/errorHandler.js';
+import { checkRateLimit, recordRequest, waitForRateLimit } from '../etg/etgRateLimiter.js';
 
 // ETG API Configuration
 const ETG_BASE_URL = 'https://api.worldota.net/api/b2b/v3';
@@ -165,16 +166,28 @@ function formatAxiosError(error, operation) {
  * @returns {Promise<Object>} - Prebook response with booking_hash
  */
 export async function prebookRate(book_hash, residency = 'us', currency = 'USD') {
-  try {
-    console.log(`🔒 ETG prebookRate: book_hash=${book_hash?.substring(0, 20)}...`);
+  const endpoint = '/hotel/prebook/';
 
-    const response = await apiClient.post('/hotel/order/prebook/', {
+  try {
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`🔒 ETG prebookRate: book_hash=${book_hash?.substring(0, 20)}... (${rateLimitCheck.remaining || '?'} requests remaining)`);
+
+    const response = await apiClient.post(endpoint, {
       book_hash,
       residency,
       currency
     }, {
       timeout: TIMEOUTS.prebook
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Prebook successful: booking_hash=${response.data.data?.booking_hash?.substring(0, 20)}...`);
@@ -206,8 +219,17 @@ export async function prebookRate(book_hash, residency = 'us', currency = 'USD')
  * @returns {Promise<Object>} - Booking form with required fields, order_id, and item_id
  */
 export async function getOrderForm(book_hash, partner_order_id, language = 'en', user_ip = '127.0.0.1') {
+  const endpoint = '/hotel/order/booking/form/';
+
   try {
-    console.log(`📋 ETG getOrderForm (Create booking process): book_hash=${book_hash?.substring(0, 20)}...`);
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`📋 ETG getOrderForm (Create booking process): book_hash=${book_hash?.substring(0, 20)}... (${rateLimitCheck.remaining || '?'} requests remaining)`);
 
     // Validate required parameters
     if (!book_hash) {
@@ -225,9 +247,12 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
       user_ip
     };
 
-    const response = await apiClient.post('/hotel/order/booking/form/', payload, {
+    const response = await apiClient.post(endpoint, payload, {
       timeout: TIMEOUTS.orderForm
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order form retrieved successfully`);
@@ -271,8 +296,17 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
  * @returns {Promise<Object>} - Order completion response with order_id
  */
 export async function finishOrder(order_id, item_id, guests, payment_type, partner_order_id, language = 'en', upsell_data = null) {
+  const endpoint = '/hotel/order/booking/finish/';
+
   try {
-    console.log(`✅ ETG finishOrder (Finish booking): order_id=${order_id}, item_id=${item_id}`);
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`✅ ETG finishOrder (Finish booking): order_id=${order_id}, item_id=${item_id} (${rateLimitCheck.remaining || '?'} requests remaining)`);
 
     // Validate required parameters
     if (!order_id || !item_id) {
@@ -300,9 +334,12 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
     }
 
     // Use correct endpoint per ETG API: /hotel/order/booking/finish/
-    const response = await apiClient.post('/hotel/order/booking/finish/', payload, {
+    const response = await apiClient.post(endpoint, payload, {
       timeout: TIMEOUTS.orderFinish
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       const orderData = response.data.data;
@@ -329,9 +366,9 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
  * @returns {Promise<Object>} - Order status information
  */
 export async function getOrderStatus(order_id) {
-  try {
-    console.log(`📊 ETG getOrderStatus: order_id=${order_id}`);
+  const endpoint = '/hotel/order/booking/finish/status/';
 
+  try {
     // Check for fake order IDs (frontend simulation) - log warning but don't mock
     if (isFakeOrderId(order_id)) {
       console.warn(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
@@ -343,13 +380,25 @@ export async function getOrderStatus(order_id) {
       }
     }
 
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`📊 ETG getOrderStatus: order_id=${order_id} (${rateLimitCheck.remaining || '?'} requests remaining)`);
+
     // Use correct ETG API v3 endpoint per certification checklist
     // Certification checklist specifies: api/b2b/v3/hotel/order/booking/finish/status/
-    const response = await apiClient.post('/hotel/order/booking/finish/status/', {
+    const response = await apiClient.post(endpoint, {
       order_id
     }, {
       timeout: TIMEOUTS.orderStatus
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order status retrieved successfully`);
@@ -376,9 +425,9 @@ export async function getOrderStatus(order_id) {
  * @returns {Promise<Object>} - Complete order details
  */
 export async function getOrderInfo(order_id) {
-  try {
-    console.log(`📄 ETG getOrderInfo: order_id=${order_id}`);
+  const endpoint = '/hotel/order/info/';
 
+  try {
     // Check for fake order IDs (frontend simulation) - log warning but don't mock
     if (isFakeOrderId(order_id)) {
       console.warn(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
@@ -390,13 +439,25 @@ export async function getOrderInfo(order_id) {
       }
     }
 
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`📄 ETG getOrderInfo: order_id=${order_id} (${rateLimitCheck.remaining || '?'} requests remaining)`);
+
     // Use correct ETG API v3 endpoint
     // Based on certification checklist, order info endpoint is typically /hotel/order/info/
-    const response = await apiClient.post('/hotel/order/info/', {
+    const response = await apiClient.post(endpoint, {
       order_id
     }, {
       timeout: TIMEOUTS.orderInfo
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order info retrieved successfully`);
@@ -426,20 +487,9 @@ export async function getOrderInfo(order_id) {
  * @returns {Promise<Object>} - Booking(s) information
  */
 export async function retrieveBookings(order_id = null, filters = {}) {
+  const endpoint = '/hotel/order/info/'; // Use order/info endpoint for rate limiting
+
   try {
-    console.log(`📋 ETG retrieveBookings: ${order_id ? `order_id=${order_id}` : 'list all bookings'}`);
-
-    const payload = {};
-    
-    if (order_id) {
-      payload.order_id = order_id;
-    }
-    
-    // Add filters if provided
-    if (filters.date_from) payload.date_from = filters.date_from;
-    if (filters.date_to) payload.date_to = filters.date_to;
-    if (filters.status) payload.status = filters.status;
-
     // Check for fake order IDs
     if (order_id && isFakeOrderId(order_id)) {
       console.warn(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
@@ -455,11 +505,34 @@ export async function retrieveBookings(order_id = null, filters = {}) {
       }
     }
 
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`📋 ETG retrieveBookings: ${order_id ? `order_id=${order_id}` : 'list all bookings'} (${rateLimitCheck.remaining || '?'} requests remaining)`);
+
+    const payload = {};
+    
+    if (order_id) {
+      payload.order_id = order_id;
+    }
+    
+    // Add filters if provided
+    if (filters.date_from) payload.date_from = filters.date_from;
+    if (filters.date_to) payload.date_to = filters.date_to;
+    if (filters.status) payload.status = filters.status;
+
     // Use ETG API endpoint for retrieving bookings
     // Based on ETG API structure, this is typically /hotel/order/bookings/ or /hotel/order/retrieve/
     const response = await apiClient.post('/hotel/order/bookings/', payload, {
       timeout: TIMEOUTS.orderInfo
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Bookings retrieved successfully`);
@@ -485,9 +558,9 @@ export async function retrieveBookings(order_id = null, filters = {}) {
  * @returns {Promise<Object>} - Booking documents
  */
 export async function getOrderDocuments(order_id) {
-  try {
-    console.log(`📑 ETG getOrderDocuments: order_id=${order_id}`);
+  const endpoint = '/hotel/order/document/voucher/download/'; // Using voucher download endpoint
 
+  try {
     // Check for fake order IDs (frontend simulation) - log warning but don't mock
     if (isFakeOrderId(order_id)) {
       console.warn(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
@@ -498,6 +571,15 @@ export async function getOrderDocuments(order_id) {
         return generateMockOrderDocuments(order_id);
       }
     }
+
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`📑 ETG getOrderDocuments: order_id=${order_id} (${rateLimitCheck.remaining || '?'} requests remaining)`);
 
     // Use correct ETG API v3 endpoint
     // Based on certification checklist, documents may use /voucher/ endpoint
@@ -522,6 +604,9 @@ export async function getOrderDocuments(order_id) {
         throw firstError;
       }
     }
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order documents retrieved successfully`);

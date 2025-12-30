@@ -6,6 +6,7 @@
 
 import { createAxiosWithRetry } from '../../middleware/retryHandler.js';
 import { categorizeError } from '../../utils/errorHandler.js';
+import { checkRateLimit, recordRequest, waitForRateLimit } from './etgRateLimiter.js';
 
 // ETG API Configuration
 const ETG_BASE_URL = 'https://api.worldota.net/api/b2b/v3';
@@ -92,10 +93,19 @@ function formatAxiosError(error, operation) {
 export async function searchHotels(params) {
   const { region_id, checkin, checkout, guests, currency = 'USD', residency = 'us' } = params;
 
-  try {
-    console.log(`🔍 ETG searchHotels: region_id=${region_id}, ${checkin} → ${checkout}`);
+  const endpoint = '/search/serp/region/';
 
-    const response = await apiClient.post('/search/serp/region/', {
+  try {
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`🔍 ETG searchHotels: region_id=${region_id}, ${checkin} → ${checkout} (${rateLimitCheck.remaining || '?'} requests remaining)`);
+
+    const response = await apiClient.post(endpoint, {
       region_id,
       checkin,
       checkout,
@@ -106,6 +116,9 @@ export async function searchHotels(params) {
     }, {
       timeout: TIMEOUTS.search
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       const hotels = response.data.data?.hotels || [];
@@ -139,15 +152,27 @@ export async function searchHotels(params) {
  * @returns {Promise<Object>} - Hotel static data
  */
 export async function getHotelInformation(hotelId, language = 'en') {
-  try {
-    console.log(`🏨 ETG getHotelInfo: ${hotelId}`);
+  const endpoint = '/hotel/info/static/';
 
-    const response = await apiClient.post('/hotel/info/static/', {
+  try {
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`🏨 ETG getHotelInfo: ${hotelId} (${rateLimitCheck.remaining || '?'} requests remaining)`);
+
+    const response = await apiClient.post(endpoint, {
       hotel_id: hotelId,
       language
     }, {
       timeout: TIMEOUTS.hotelInfo
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       return response.data.data;
@@ -170,9 +195,17 @@ export async function getHotelInformation(hotelId, language = 'en') {
  */
 export async function getHotelPage(hotelId, params) {
   const { checkin, checkout, guests, currency = 'USD', residency = 'us', language = 'en' } = params;
+  const endpoint = '/hotel/info/'; // Using hotel/info endpoint based on rate limits
 
   try {
-    console.log(`🏨 ETG getHotelPage: ${hotelId}`);
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`🏨 ETG getHotelPage: ${hotelId} (${rateLimitCheck.remaining || '?'} requests remaining)`);
 
     const response = await apiClient.post('/hotel/info/hotelpage/', {
       hotel_id: hotelId,
@@ -185,6 +218,9 @@ export async function getHotelPage(hotelId, params) {
     }, {
       timeout: TIMEOUTS.hotelPage
     });
+
+    // Record successful request (using hotel/info endpoint for rate limiting)
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       return response.data.data;
@@ -205,8 +241,17 @@ export async function getHotelPage(hotelId, params) {
  * @returns {Promise<Array>} - Array of matching regions
  */
 export async function searchRegions(query) {
+  const endpoint = '/search/multicomplete/'; // Using multicomplete endpoint based on rate limits
+
   try {
-    console.log(`🔍 ETG searchRegions: "${query}"`);
+    // Check and wait for rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    console.log(`🔍 ETG searchRegions: "${query}" (${rateLimitCheck.remaining || '?'} requests remaining)`);
 
     const response = await apiClient.post('/search/serp/suggest/', {
       query: query,
@@ -214,6 +259,9 @@ export async function searchRegions(query) {
     }, {
       timeout: TIMEOUTS.autocomplete
     });
+
+    // Record successful request
+    recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
       const regions = response.data.data?.regions || [];

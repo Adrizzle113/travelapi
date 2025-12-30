@@ -113,6 +113,30 @@ router.post("/hotel/details", async (req, res) => {
     const duration = Date.now() - startTime;
     console.error("💥 Hotel details error:", error);
 
+    // Check if it's a 404 from ETG API (hotel not found or endpoint not available)
+    if (error.response?.status === 404) {
+      return res.status(404).json({
+        success: false,
+        error: "Hotel not found or endpoint not available",
+        message: error.response?.data?.error?.message || "The hotel may not be available in the ETG inventory, or the API endpoint is not accessible with your credentials.",
+        hotelId: finalHotelId,
+        etgError: error.response?.data?.error || "page not found",
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Check if it's an authentication error
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      return res.status(401).json({
+        success: false,
+        error: "API authentication failed",
+        message: "Invalid ETG API credentials or insufficient permissions",
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: `Failed to get hotel details: ${error.message}`,
