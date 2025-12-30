@@ -341,14 +341,27 @@ export function validatePrebook(req, res, next) {
 }
 
 export function validateOrderForm(req, res, next) {
-  const { booking_hash, language } = req.body;
+  // Accept both book_hash and booking_hash for backward compatibility
+  const { book_hash, booking_hash, partner_order_id, language } = req.body;
+  const hash = book_hash || booking_hash;
 
-  if (!booking_hash || typeof booking_hash !== 'string' || booking_hash.trim() === '') {
+  if (!hash || typeof hash !== 'string' || hash.trim() === '') {
     return res.status(400).json({
       success: false,
       error: {
-        message: 'booking_hash is required and must be a non-empty string',
-        code: 'MISSING_BOOKING_HASH'
+        message: 'book_hash is required and must be a non-empty string (from prebook response)',
+        code: 'MISSING_BOOK_HASH'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (!partner_order_id || typeof partner_order_id !== 'string' || partner_order_id.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'partner_order_id is required and must be a non-empty string',
+        code: 'MISSING_PARTNER_ORDER_ID'
       },
       timestamp: new Date().toISOString()
     });
@@ -369,14 +382,37 @@ export function validateOrderForm(req, res, next) {
 }
 
 export function validateOrderFinish(req, res, next) {
-  const { booking_hash, guests, payment_type } = req.body;
+  const { order_id, item_id, guests, payment_type, partner_order_id } = req.body;
 
-  if (!booking_hash || typeof booking_hash !== 'string' || booking_hash.trim() === '') {
+  // Correct flow: order_id and item_id are required (from booking/form step)
+  if (!order_id || typeof order_id !== 'string' || order_id.trim() === '') {
     return res.status(400).json({
       success: false,
       error: {
-        message: 'booking_hash is required and must be a non-empty string',
-        code: 'MISSING_BOOKING_HASH'
+        message: 'order_id is required and must be a non-empty string (from booking/form response)',
+        code: 'MISSING_ORDER_ID'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (!item_id || typeof item_id !== 'string' || item_id.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'item_id is required and must be a non-empty string (from booking/form response)',
+        code: 'MISSING_ITEM_ID'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (!partner_order_id || typeof partner_order_id !== 'string' || partner_order_id.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'partner_order_id is required and must be a non-empty string',
+        code: 'MISSING_PARTNER_ORDER_ID'
       },
       timestamp: new Date().toISOString()
     });

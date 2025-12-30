@@ -11,7 +11,8 @@ import {
   finishOrder,
   getOrderStatus,
   getOrderInfo,
-  getOrderDocuments
+  getOrderDocuments,
+  retrieveBookings
 } from "../../services/booking/bookingService.js";
 import {
   validatePrebook,
@@ -107,18 +108,35 @@ router.post("/prebook", validatePrebook, async (req, res) => {
 
 router.post("/order/form", validateOrderForm, async (req, res) => {
   const startTime = Date.now();
-  const { userId, booking_hash, language = "en", partner_order_id } = req.body;
+  // Accept both book_hash and booking_hash for backward compatibility
+  // Prefer book_hash (correct flow), fallback to booking_hash
+  const { userId, book_hash, booking_hash, language = "en", partner_order_id } = req.body;
 
-  console.log("📋 === ORDER FORM REQUEST ===");
-  console.log(`Booking hash: ${booking_hash?.substring(0, 20)}...`);
+  console.log("📋 === ORDER FORM REQUEST (Create booking process) ===");
+  
+  // Use book_hash if provided, otherwise fallback to booking_hash for backward compatibility
+  const hash = book_hash || booking_hash;
+  console.log(`Book hash: ${hash?.substring(0, 20)}...`);
+  console.log(`Partner Order ID: ${partner_order_id}`);
 
   // Validation
-  if (!booking_hash) {
+  if (!hash) {
     return res.status(400).json({
       success: false,
       error: {
-        message: "booking_hash is required",
-        code: "MISSING_BOOKING_HASH"
+        message: "book_hash is required (from prebook response)",
+        code: "MISSING_BOOK_HASH"
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (!partner_order_id) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "partner_order_id is required",
+        code: "MISSING_PARTNER_ORDER_ID"
       },
       timestamp: new Date().toISOString()
     });
@@ -126,9 +144,8 @@ router.post("/order/form", validateOrderForm, async (req, res) => {
 
   try {
     const userIp = getUserIp(req);
-    const orderId = partner_order_id || `partner-${uuidv4()}`;
 
-    const result = await getOrderForm(booking_hash, language, userIp, orderId);
+    const result = await getOrderForm(hash, partner_order_id, language, userIp);
 
     const duration = Date.now() - startTime;
 
@@ -163,25 +180,43 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
   const startTime = Date.now();
   const { 
     userId, 
-    booking_hash, 
+    order_id,
+    item_id,
     guests, 
     payment_type, 
     partner_order_id,
-    language = "en"
+    language = "en",
+    upsell_data
   } = req.body;
 
   console.log("✅ === ORDER FINISH REQUEST ===");
-  console.log(`Booking hash: ${booking_hash?.substring(0, 20)}...`);
+  console.log(`Order ID: ${order_id}`);
+  console.log(`Item ID: ${item_id}`);
+  console.log(`Partner Order ID: ${partner_order_id}`);
   console.log(`Payment type: ${payment_type}`);
   console.log(`Guests: ${guests?.length || 0}`);
+  if (upsell_data && Array.isArray(upsell_data)) {
+    console.log(`Upsells: ${upsell_data.length} items`);
+  }
 
-  // Validation
-  if (!booking_hash) {
+  // Validation - order_id and item_id are required (from booking/form step)
+  if (!order_id || !item_id) {
     return res.status(400).json({
       success: false,
       error: {
-        message: "booking_hash is required",
-        code: "MISSING_BOOKING_HASH"
+        message: "order_id and item_id are required (from booking/form response)",
+        code: "MISSING_ORDER_IDS"
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (!partner_order_id) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "partner_order_id is required",
+        code: "MISSING_PARTNER_ORDER_ID"
       },
       timestamp: new Date().toISOString()
     });
@@ -210,9 +245,15 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
   }
 
   try {
-    const orderId = partner_order_id || `partner-${uuidv4()}`;
-
-    const result = await finishOrder(booking_hash, guests, payment_type, orderId, language);
+    const result = await finishOrder(
+      order_id,
+      item_id,
+      guests, 
+      payment_type, 
+      partner_order_id,
+      language,
+      upsell_data
+    );
 
     const duration = Date.now() - startTime;
 
@@ -433,6 +474,71 @@ router.post("/order/documents", validateOrderId, async (req, res) => {
       error: {
         message: error.message || "Failed to get order documents",
         code: error.category || "ORDER_DOCUMENTS_ERROR"
+      },
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`
+    });
+  }
+});
+
+// ================================
+// RETRIEVE BOOKINGS - Post-booking retrieval
+// ================================
+
+router.post("/order/bookings", async (req, res) => {
+  const startTime = Date.now();
+  const { userId, order_id, date_from, date_to, status } = req.body;
+
+  console.log("📋 === RETRIEVE BOOKINGS REQUEST ===");
+  if (order_id) {
+    console.log(`Order ID: ${order_id}`);
+  } else {
+    console.log("Retrieving booking list");
+    if (date_from) console.log(`Date from: ${date_from}`);
+    if (date_to) console.log(`Date to: ${date_to}`);
+    if (status) console.log(`Status: ${status}`);
+  }
+
+  // Check if this is a fake order ID
+  if (order_id) {
+    const isFakeId = /^ORD-\d+$/.test(order_id);
+    if (isFakeId) {
+      console.log(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
+    }
+  }
+
+  try {
+    const filters = {};
+    if (date_from) filters.date_from = date_from;
+    if (date_to) filters.date_to = date_to;
+    if (status) filters.status = status;
+
+    const result = await retrieveBookings(order_id || null, filters);
+
+    const duration = Date.now() - startTime;
+
+    if (order_id && /^ORD-\d+$/.test(order_id)) {
+      console.log(`🎭 [MOCK RESPONSE] Returning mock data for fake order ID`);
+    } else {
+      console.log(`✅ [REAL API CALL] Bookings retrieved from ETG API`);
+    }
+
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error("💥 Retrieve bookings error:", error);
+
+    res.status(error.statusCode || 500).json({
+      success: false,
+      error: {
+        message: error.message || "Failed to retrieve bookings",
+        code: error.category || "RETRIEVE_BOOKINGS_ERROR"
       },
       timestamp: new Date().toISOString(),
       duration: `${duration}ms`

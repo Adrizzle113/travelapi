@@ -9,6 +9,7 @@ import staticInfoRoutes from "./static-info.js";
 import poiRoutes from "./poi.js";
 import statsRoutes from "./stats.js";
 import orderRoutes from "./orders.js";
+import reviewRoutes from "./reviews.js";
 
 const router = express.Router();
 
@@ -19,5 +20,6 @@ router.use(staticInfoRoutes); // /hotel/static-info
 router.use(poiRoutes);        // /hotel/:id/poi, /poi/refresh-cache
 router.use(statsRoutes);      // /stats
 router.use(orderRoutes);      // /prebook, /order/*
+router.use(reviewRoutes);     // /hotel/:hotelId/reviews
 
 export default router;

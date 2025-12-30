@@ -15,8 +15,9 @@ if (!ETG_API_KEY) {
   console.warn('⚠️ ETG_API_KEY not set - Booking API calls will fail');
 }
 
-// Development mode configuration
-const ENABLE_MOCK_BOOKINGS = process.env.ENABLE_MOCK_BOOKINGS === 'true' || process.env.NODE_ENV === 'development';
+// Development mode configuration - DISABLED by default for certification
+// Only enable for explicit testing, not for real bookings
+const ENABLE_MOCK_BOOKINGS = process.env.ENABLE_MOCK_BOOKINGS === 'true';
 
 // Timeout configurations for booking operations
 const TIMEOUTS = {
@@ -195,25 +196,34 @@ export async function prebookRate(book_hash, residency = 'us', currency = 'USD')
 
 /**
  * Get booking form fields (required guest information)
- * @param {string} booking_hash - Booking hash from prebook
+ * Creates booking process and returns form fields + order information
+ * Per ETG API: "Create booking process" endpoint
+ * Correct flow: Takes partner_order_id + book_hash, Returns order_id + item_id
+ * @param {string} book_hash - Book hash from prebook response
+ * @param {string} partner_order_id - Partner's unique order ID (required)
  * @param {string} language - Language code (default: en)
  * @param {string} user_ip - User IP address
- * @param {string} partner_order_id - Partner's unique order ID
- * @returns {Promise<Object>} - Booking form with required fields
+ * @returns {Promise<Object>} - Booking form with required fields, order_id, and item_id
  */
-export async function getOrderForm(booking_hash, language = 'en', user_ip = '127.0.0.1', partner_order_id = null) {
+export async function getOrderForm(book_hash, partner_order_id, language = 'en', user_ip = '127.0.0.1') {
   try {
-    console.log(`📋 ETG getOrderForm: booking_hash=${booking_hash?.substring(0, 20)}...`);
+    console.log(`📋 ETG getOrderForm (Create booking process): book_hash=${book_hash?.substring(0, 20)}...`);
+
+    // Validate required parameters
+    if (!book_hash) {
+      throw new Error('book_hash is required (from prebook response)');
+    }
+
+    if (!partner_order_id) {
+      throw new Error('partner_order_id is required');
+    }
 
     const payload = {
-      booking_hash,
+      book_hash,
+      partner_order_id,
       language,
       user_ip
     };
-
-    if (partner_order_id) {
-      payload.partner_order_id = partner_order_id;
-    }
 
     const response = await apiClient.post('/hotel/order/booking/form/', payload, {
       timeout: TIMEOUTS.orderForm
@@ -221,7 +231,17 @@ export async function getOrderForm(booking_hash, language = 'en', user_ip = '127
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order form retrieved successfully`);
-      return response.data.data;
+      const formData = response.data.data;
+      
+      // Log order IDs if present (for debugging)
+      if (formData.order_id) {
+        console.log(`   Order ID: ${formData.order_id}`);
+      }
+      if (formData.item_id) {
+        console.log(`   Item ID: ${formData.item_id}`);
+      }
+      
+      return formData;
     }
 
     throw new Error(response.data?.error?.message || 'Get order form failed');
@@ -239,30 +259,55 @@ export async function getOrderForm(booking_hash, language = 'en', user_ip = '127
 
 /**
  * Finish/complete the booking
- * @param {string} booking_hash - Booking hash from prebook
+ * Per ETG API: "Start booking process" endpoint
+ * Correct flow: Uses order_id and item_id from booking/form step
+ * @param {string} order_id - Order ID from booking/form response
+ * @param {string} item_id - Item ID from booking/form response
  * @param {Array} guests - Guest information array
- * @param {string} payment_type - Payment type (e.g., 'card', 'pay_at_hotel')
- * @param {string} partner_order_id - Partner's unique order ID
+ * @param {string} payment_type - Payment type (e.g., 'deposit', 'hotel', 'now')
+ * @param {string} partner_order_id - Partner's unique order ID (required)
  * @param {string} language - Language code (default: en)
+ * @param {Array} upsell_data - Optional upsells (early check-in, late checkout, etc.)
  * @returns {Promise<Object>} - Order completion response with order_id
  */
-export async function finishOrder(booking_hash, guests, payment_type, partner_order_id, language = 'en') {
+export async function finishOrder(order_id, item_id, guests, payment_type, partner_order_id, language = 'en', upsell_data = null) {
   try {
-    console.log(`✅ ETG finishOrder: booking_hash=${booking_hash?.substring(0, 20)}...`);
+    console.log(`✅ ETG finishOrder (Finish booking): order_id=${order_id}, item_id=${item_id}`);
 
-    const response = await apiClient.post('/hotel/order/finish/', {
-      booking_hash,
+    // Validate required parameters
+    if (!order_id || !item_id) {
+      throw new Error('order_id and item_id are required (from booking/form response)');
+    }
+
+    if (!partner_order_id) {
+      throw new Error('partner_order_id is required');
+    }
+
+    // Build payload per ETG API specification
+    const payload = {
+      order_id,
+      item_id,
       guests,
       payment_type,
       partner_order_id,
       language
-    }, {
+    };
+
+    // Add upsells if provided
+    if (upsell_data && Array.isArray(upsell_data) && upsell_data.length > 0) {
+      payload.upsell_data = upsell_data;
+      console.log(`   Upsells: ${upsell_data.length} items`);
+    }
+
+    // Use correct endpoint per ETG API: /hotel/order/booking/finish/
+    const response = await apiClient.post('/hotel/order/booking/finish/', payload, {
       timeout: TIMEOUTS.orderFinish
     });
 
     if (response.data && response.data.status === 'ok') {
-      console.log(`✅ Order finished successfully: order_id=${response.data.data?.order_id}`);
-      return response.data.data;
+      const orderData = response.data.data;
+      console.log(`✅ Order finished successfully: order_id=${orderData?.order_id || 'pending'}`);
+      return orderData;
     }
 
     throw new Error(response.data?.error?.message || 'Finish order failed');
@@ -287,39 +332,24 @@ export async function getOrderStatus(order_id) {
   try {
     console.log(`📊 ETG getOrderStatus: order_id=${order_id}`);
 
-    // Check for fake order IDs (frontend simulation)
+    // Check for fake order IDs (frontend simulation) - log warning but don't mock
     if (isFakeOrderId(order_id)) {
-      if (ENABLE_MOCK_BOOKINGS) {
-        console.log(`🎭 [MOCK MODE] Detected fake order ID: ${order_id} - Returning mock response`);
-        return generateMockOrderStatus(order_id);
+      console.warn(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
+      if (!ENABLE_MOCK_BOOKINGS) {
+        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID. Use a real order ID from finishOrder() response.`);
       } else {
-        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID.`);
+        console.log(`🎭 [MOCK MODE ENABLED] Returning mock response for testing only`);
+        return generateMockOrderStatus(order_id);
       }
     }
 
-    // Try the correct ETG API endpoint based on documentation structure
-    // ETG API v3 uses /bookings/ endpoint for post-booking operations
-    let response;
-    try {
-      // First try: /bookings/ endpoint (POST with order_id in body)
-      response = await apiClient.post('/bookings/', {
-        order_id
-      }, {
-        timeout: TIMEOUTS.orderStatus
-      });
-    } catch (firstError) {
-      // Fallback: Try /hotel/order/status without trailing slash
-      if (firstError.response?.status === 404) {
-        console.log(`⚠️ /bookings/ endpoint returned 404, trying /hotel/order/status`);
-        response = await apiClient.post('/hotel/order/status', {
-          order_id
-        }, {
-          timeout: TIMEOUTS.orderStatus
-        });
-      } else {
-        throw firstError;
-      }
-    }
+    // Use correct ETG API v3 endpoint per certification checklist
+    // Certification checklist specifies: api/b2b/v3/hotel/order/booking/finish/status/
+    const response = await apiClient.post('/hotel/order/booking/finish/status/', {
+      order_id
+    }, {
+      timeout: TIMEOUTS.orderStatus
+    });
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order status retrieved successfully`);
@@ -349,38 +379,24 @@ export async function getOrderInfo(order_id) {
   try {
     console.log(`📄 ETG getOrderInfo: order_id=${order_id}`);
 
-    // Check for fake order IDs (frontend simulation)
+    // Check for fake order IDs (frontend simulation) - log warning but don't mock
     if (isFakeOrderId(order_id)) {
-      if (ENABLE_MOCK_BOOKINGS) {
-        console.log(`🎭 [MOCK MODE] Detected fake order ID: ${order_id} - Returning mock response`);
-        return generateMockOrderInfo(order_id);
+      console.warn(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
+      if (!ENABLE_MOCK_BOOKINGS) {
+        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID. Use a real order ID from finishOrder() response.`);
       } else {
-        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID.`);
+        console.log(`🎭 [MOCK MODE ENABLED] Returning mock response for testing only`);
+        return generateMockOrderInfo(order_id);
       }
     }
 
-    // Try the correct ETG API endpoint
-    let response;
-    try {
-      // First try: /bookings/ endpoint with order_id
-      response = await apiClient.post('/bookings/', {
-        order_id
-      }, {
-        timeout: TIMEOUTS.orderInfo
-      });
-    } catch (firstError) {
-      // Fallback: Try /hotel/order/info without trailing slash
-      if (firstError.response?.status === 404) {
-        console.log(`⚠️ /bookings/ endpoint returned 404, trying /hotel/order/info`);
-        response = await apiClient.post('/hotel/order/info', {
-          order_id
-        }, {
-          timeout: TIMEOUTS.orderInfo
-        });
-      } else {
-        throw firstError;
-      }
-    }
+    // Use correct ETG API v3 endpoint
+    // Based on certification checklist, order info endpoint is typically /hotel/order/info/
+    const response = await apiClient.post('/hotel/order/info/', {
+      order_id
+    }, {
+      timeout: TIMEOUTS.orderInfo
+    });
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order info retrieved successfully`);
@@ -402,6 +418,68 @@ export async function getOrderInfo(order_id) {
 }
 
 /**
+ * Retrieve bookings (post-booking endpoint)
+ * Per ETG API: "Retrieve bookings" endpoint
+ * Can retrieve a list of bookings or a specific booking by order_id
+ * @param {string} order_id - Optional: Specific order ID to retrieve
+ * @param {Object} filters - Optional: Filters for booking list (date_from, date_to, status, etc.)
+ * @returns {Promise<Object>} - Booking(s) information
+ */
+export async function retrieveBookings(order_id = null, filters = {}) {
+  try {
+    console.log(`📋 ETG retrieveBookings: ${order_id ? `order_id=${order_id}` : 'list all bookings'}`);
+
+    const payload = {};
+    
+    if (order_id) {
+      payload.order_id = order_id;
+    }
+    
+    // Add filters if provided
+    if (filters.date_from) payload.date_from = filters.date_from;
+    if (filters.date_to) payload.date_to = filters.date_to;
+    if (filters.status) payload.status = filters.status;
+
+    // Check for fake order IDs
+    if (order_id && isFakeOrderId(order_id)) {
+      console.warn(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
+      if (!ENABLE_MOCK_BOOKINGS) {
+        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID. Use a real order ID from finishOrder() response.`);
+      } else {
+        console.log(`🎭 [MOCK MODE ENABLED] Returning mock response for testing only`);
+        // Return mock booking data
+        return {
+          bookings: [generateMockOrderInfo(order_id)],
+          total: 1
+        };
+      }
+    }
+
+    // Use ETG API endpoint for retrieving bookings
+    // Based on ETG API structure, this is typically /hotel/order/bookings/ or /hotel/order/retrieve/
+    const response = await apiClient.post('/hotel/order/bookings/', payload, {
+      timeout: TIMEOUTS.orderInfo
+    });
+
+    if (response.data && response.data.status === 'ok') {
+      console.log(`✅ Bookings retrieved successfully`);
+      return response.data.data;
+    }
+
+    throw new Error(response.data?.error?.message || 'Retrieve bookings failed');
+
+  } catch (error) {
+    const formattedError = formatAxiosError(error, 'Retrieve bookings');
+    console.error('❌ ETG retrieveBookings error:', formattedError.message);
+    if (error.response) {
+      console.error('   Status:', error.response.status);
+      console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));
+    }
+    throw formattedError;
+  }
+}
+
+/**
  * Get booking documents (voucher, confirmation, etc.)
  * @param {string} order_id - Order ID
  * @returns {Promise<Object>} - Booking documents
@@ -410,49 +488,36 @@ export async function getOrderDocuments(order_id) {
   try {
     console.log(`📑 ETG getOrderDocuments: order_id=${order_id}`);
 
-    // Check for fake order IDs (frontend simulation)
+    // Check for fake order IDs (frontend simulation) - log warning but don't mock
     if (isFakeOrderId(order_id)) {
-      if (ENABLE_MOCK_BOOKINGS) {
-        console.log(`🎭 [MOCK MODE] Detected fake order ID: ${order_id} - Returning mock response`);
-        return generateMockOrderDocuments(order_id);
+      console.warn(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
+      if (!ENABLE_MOCK_BOOKINGS) {
+        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID. Use a real order ID from finishOrder() response.`);
       } else {
-        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID.`);
+        console.log(`🎭 [MOCK MODE ENABLED] Returning mock response for testing only`);
+        return generateMockOrderDocuments(order_id);
       }
     }
 
-    // Try the correct ETG API endpoint
-    // Documents may use /voucher/ or /invoice/ endpoints
+    // Use correct ETG API v3 endpoint
+    // Based on certification checklist, documents may use /voucher/ endpoint
+    // Try /hotel/order/documents/ first, then fallback to /voucher/
     let response;
     try {
-      // First try: /bookings/ endpoint
-      response = await apiClient.post('/bookings/', {
+      response = await apiClient.post('/hotel/order/documents/', {
         order_id
       }, {
         timeout: TIMEOUTS.orderDocuments
       });
     } catch (firstError) {
-      // Fallback 1: Try /hotel/order/documents without trailing slash
+      // Fallback: Try /voucher/ endpoint if documents endpoint doesn't exist
       if (firstError.response?.status === 404) {
-        try {
-          console.log(`⚠️ /bookings/ endpoint returned 404, trying /hotel/order/documents`);
-          response = await apiClient.post('/hotel/order/documents', {
-            order_id
-          }, {
-            timeout: TIMEOUTS.orderDocuments
-          });
-        } catch (secondError) {
-          // Fallback 2: Try /voucher/ endpoint
-          if (secondError.response?.status === 404) {
-            console.log(`⚠️ /hotel/order/documents returned 404, trying /voucher/`);
-            response = await apiClient.post('/voucher/', {
-              order_id
-            }, {
-              timeout: TIMEOUTS.orderDocuments
-            });
-          } else {
-            throw secondError;
-          }
-        }
+        console.log(`⚠️ /hotel/order/documents/ returned 404, trying /voucher/`);
+        response = await apiClient.post('/voucher/', {
+          order_id
+        }, {
+          timeout: TIMEOUTS.orderDocuments
+        });
       } else {
         throw firstError;
       }
@@ -483,6 +548,7 @@ export default {
   finishOrder,
   getOrderStatus,
   getOrderInfo,
-  getOrderDocuments
+  getOrderDocuments,
+  retrieveBookings
 };
 
