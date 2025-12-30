@@ -285,10 +285,6 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
       console.log(`✅ Order form retrieved successfully`);
       const formData = response.data.data;
       
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:284',message:'getOrderForm response received',data:{order_id:formData.order_id,order_id_type:typeof formData.order_id,item_id:formData.item_id,item_id_type:typeof formData.item_id,payment_types:formData.payment_types,payment_types_available:formData.payment_types_available},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
-      
       // Log order IDs if present (for debugging)
       if (formData.order_id) {
         console.log(`   Order ID: ${formData.order_id}`);
@@ -337,10 +333,6 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
  */
 export async function finishOrder(order_id, item_id, guests, payment_type, partner_order_id, language = 'en', upsell_data = null, email = null, phone = null, user_ip = null) {
   const endpoint = '/hotel/order/booking/finish/';
-
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:325',message:'finishOrder service entry',data:{order_id,order_id_type:typeof order_id,item_id,item_id_type:typeof item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
 
   try {
     // Check and wait for rate limit
@@ -409,10 +401,6 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
       console.log(`   Upsells: ${upsell_data.length} items`);
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:385',message:'payload before sending to ETG API',data:{payload:JSON.stringify(payload),payload_keys:Object.keys(payload),order_id,order_id_type:typeof order_id,item_id,item_id_type:typeof item_id,guests_count:guests?.length,guests_sample:guests?.[0],payment_type,email,phone,user_ip},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-
     console.log('📤 Sending payload to ETG API:');
     console.log(JSON.stringify(payload, null, 2));
     console.log('📤 Payment type details:');
@@ -445,9 +433,6 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
       console.error('   Request URL:', error.config?.url);
       console.error('   Request Method:', error.config?.method);
       console.error('   Request Payload:', JSON.stringify(error.config?.data || payload, null, 2));
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:409',message:'ETG API error response',data:{status:error.response.status,error_data:error.response.data,error_message:formattedError.message,request_url:error.config?.url,request_payload:error.config?.data},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
     } else if (error.request) {
       console.error('   No response received from ETG API');
       console.error('   Request config:', JSON.stringify(error.config, null, 2));
