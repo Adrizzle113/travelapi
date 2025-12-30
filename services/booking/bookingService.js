@@ -286,7 +286,7 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
       const formData = response.data.data;
       
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:284',message:'getOrderForm response received',data:{order_id:formData.order_id,order_id_type:typeof formData.order_id,item_id:formData.item_id,item_id_type:typeof formData.item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:284',message:'getOrderForm response received',data:{order_id:formData.order_id,order_id_type:typeof formData.order_id,item_id:formData.item_id,item_id_type:typeof formData.item_id,payment_types:formData.payment_types,payment_types_available:formData.payment_types_available},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
       // #endregion
       
       // Log order IDs if present (for debugging)
@@ -295,6 +295,12 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
       }
       if (formData.item_id) {
         console.log(`   Item ID: ${formData.item_id}`);
+      }
+      
+      // Log available payment types for debugging
+      if (formData.payment_types || formData.payment_types_available) {
+        const paymentTypes = formData.payment_types || formData.payment_types_available || [];
+        console.log(`   Available payment types:`, paymentTypes.map(pt => pt.type || pt).join(', '));
       }
       
       return formData;
@@ -324,9 +330,12 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
  * @param {string} partner_order_id - Partner's unique order ID (required)
  * @param {string} language - Language code (default: en)
  * @param {Array} upsell_data - Optional upsells (early check-in, late checkout, etc.)
+ * @param {string} email - Optional contact email
+ * @param {string} phone - Optional contact phone
+ * @param {string} user_ip - Optional user IP address
  * @returns {Promise<Object>} - Order completion response with order_id
  */
-export async function finishOrder(order_id, item_id, guests, payment_type, partner_order_id, language = 'en', upsell_data = null) {
+export async function finishOrder(order_id, item_id, guests, payment_type, partner_order_id, language = 'en', upsell_data = null, email = null, phone = null, user_ip = null) {
   const endpoint = '/hotel/order/booking/finish/';
 
   // #region agent log
@@ -353,20 +362,63 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
     }
 
     // Build payload per ETG API specification
+    // ETG API returns order_id and item_id as numbers, so send as numbers
+    // Convert strings to numbers if needed
+    const orderIdNum = typeof order_id === 'string' ? parseInt(order_id, 10) : Number(order_id);
+    const itemIdNum = typeof item_id === 'string' ? parseInt(item_id, 10) : Number(item_id);
+    
+    if (isNaN(orderIdNum) || isNaN(itemIdNum)) {
+      throw new Error(`Invalid order_id or item_id: order_id=${order_id}, item_id=${item_id}`);
+    }
+    
+    // Validate and normalize payment_type
+    // ETG API expects specific PaymentType enum values: "deposit", "now", "hotel"
+    // Normalize to lowercase and validate
+    const normalizedPaymentType = (payment_type || '').toLowerCase().trim();
+    const validPaymentTypes = ['deposit', 'now', 'hotel'];
+    
+    if (!validPaymentTypes.includes(normalizedPaymentType)) {
+      throw new Error(`Invalid payment_type: "${payment_type}". Must be one of: ${validPaymentTypes.join(', ')}`);
+    }
+    
     const payload = {
-      order_id,
-      item_id,
+      order_id: orderIdNum,  // Send as number (matching ETG API response format)
+      item_id: itemIdNum,    // Send as number (matching ETG API response format)
       guests,
-      payment_type,
+      payment_type: normalizedPaymentType,  // Use normalized payment type
       partner_order_id,
       language
     };
+
+    // Note: email, phone, and user_ip might not be accepted at top level
+    // They may need to be in guests array or not included at all
+    // Try without them first, add back if needed
+    // if (email) {
+    //   payload.email = email;
+    // }
+    // if (phone) {
+    //   payload.phone = phone;
+    // }
+    // if (user_ip) {
+    //   payload.user_ip = user_ip;
+    // }
 
     // Add upsells if provided
     if (upsell_data && Array.isArray(upsell_data) && upsell_data.length > 0) {
       payload.upsell_data = upsell_data;
       console.log(`   Upsells: ${upsell_data.length} items`);
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:385',message:'payload before sending to ETG API',data:{payload:JSON.stringify(payload),payload_keys:Object.keys(payload),order_id,order_id_type:typeof order_id,item_id,item_id_type:typeof item_id,guests_count:guests?.length,guests_sample:guests?.[0],payment_type,email,phone,user_ip},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+
+    console.log('📤 Sending payload to ETG API:');
+    console.log(JSON.stringify(payload, null, 2));
+    console.log('📤 Payment type details:');
+    console.log(`   - Value: "${payload.payment_type}"`);
+    console.log(`   - Type: ${typeof payload.payment_type}`);
+    console.log(`   - Original: "${payment_type}"`);
 
     // Use correct endpoint per ETG API: /hotel/order/booking/finish/
     const response = await apiClient.post(endpoint, payload, {
@@ -389,7 +441,18 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
     console.error('❌ ETG finishOrder error:', formattedError.message);
     if (error.response) {
       console.error('   Status:', error.response.status);
-      console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));
+      console.error('   Full Error Data:', JSON.stringify(error.response.data, null, 2));
+      console.error('   Request URL:', error.config?.url);
+      console.error('   Request Method:', error.config?.method);
+      console.error('   Request Payload:', JSON.stringify(error.config?.data || payload, null, 2));
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:409',message:'ETG API error response',data:{status:error.response.status,error_data:error.response.data,error_message:formattedError.message,request_url:error.config?.url,request_payload:error.config?.data},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+    } else if (error.request) {
+      console.error('   No response received from ETG API');
+      console.error('   Request config:', JSON.stringify(error.config, null, 2));
+    } else {
+      console.error('   Error setting up request:', error.message);
     }
     throw formattedError;
   }

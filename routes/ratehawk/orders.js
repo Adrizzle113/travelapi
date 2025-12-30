@@ -287,7 +287,10 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
     payment_type, 
     partner_order_id,
     language = "en",
-    upsell_data
+    upsell_data,
+    email,
+    phone,
+    user_ip
   } = req.body;
 
   // #region agent log
@@ -360,7 +363,10 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
       payment_type, 
       partner_order_id,
       language,
-      upsell_data
+      upsell_data,
+      email,
+      phone,
+      user_ip || getUserIp(req)
     );
 
     const duration = Date.now() - startTime;
@@ -375,8 +381,9 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Order finish error:", error);
-
-    res.status(error.statusCode || 500).json({
+    
+    // Include detailed error information in response for debugging
+    const errorResponse = {
       success: false,
       error: {
         message: error.message || "Failed to finish order",
@@ -384,7 +391,23 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
       },
       timestamp: new Date().toISOString(),
       duration: `${duration}ms`
-    });
+    };
+    
+    // Add debug info if available (only in development)
+    if (process.env.NODE_ENV === 'development' && error.originalError?.response) {
+      errorResponse.debug = {
+        etg_status: error.originalError.response.status,
+        etg_error_data: error.originalError.response.data,
+        request_payload: {
+          order_id: order_id,
+          item_id: item_id,
+          guests_count: guests?.length,
+          payment_type: payment_type
+        }
+      };
+    }
+
+    res.status(error.statusCode || 500).json(errorResponse);
   }
 });
 
