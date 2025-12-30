@@ -6,7 +6,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { searchRegions } from '../etg/etgClient.js';
+import { autocomplete } from '../etg/etgClient.js';
 
 const prisma = new PrismaClient();
 
@@ -236,7 +236,8 @@ async function findViaETG(query) {
   try {
     console.log(`🔍 [TIER 3] Calling ETG API for: ${query}`);
     
-    const regions = await searchRegions(query);
+    // ✅ FIXED: Use autocomplete (matches the import on line 9)
+    const regions = await autocomplete(query);
     
     if (!regions || regions.length === 0) {
       console.log(`⚠️ [TIER 3] No results from ETG for: ${query}`);
