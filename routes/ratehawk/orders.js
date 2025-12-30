@@ -88,30 +88,16 @@ router.post("/prebook", validatePrebook, async (req, res) => {
     });
   }
 
-  // Validate hash format - must be book_hash (h-...) or prebooked hash (p-...)
-  // NOT match_hash (m-...) from search results
-  if (book_hash.startsWith('m-')) {
+  // Validate hash format - accepts match_hash (m-...), book_hash (h-...), or prebooked hash (p-...)
+  // ETG API /hotel/prebook/ accepts match_hash and returns book_hash
+  if (!book_hash.startsWith('m-') && !book_hash.startsWith('h-') && !book_hash.startsWith('p-')) {
     return res.status(400).json({
       success: false,
       error: {
-        message: "Invalid hash format. Use book_hash (h-...) from hotel page, not match_hash (m-...) from search results.",
-        code: "INVALID_HASH_FORMAT",
-        received: book_hash,
-        hint: "Call /api/ratehawk/hotel/details first to get book_hash, then use that for prebook."
-      },
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  // Validate hash format - should be h-... or p-...
-  if (!book_hash.startsWith('h-') && !book_hash.startsWith('p-')) {
-    return res.status(400).json({
-      success: false,
-      error: {
-        message: "Invalid book_hash format. Expected hash starting with 'h-' (book_hash) or 'p-' (prebooked hash).",
+        message: "Invalid hash format. Expected match_hash (m-...), book_hash (h-...), or prebooked hash (p-...).",
         code: "INVALID_BOOK_HASH_FORMAT",
         received: book_hash,
-        hint: "The book_hash should come from the rate object in the hotel details response."
+        hint: "The hash can be match_hash from /search/hp/ endpoint, book_hash from hotel details, or prebooked hash from previous prebook."
       },
       timestamp: new Date().toISOString()
     });

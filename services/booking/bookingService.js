@@ -160,7 +160,7 @@ function formatAxiosError(error, operation) {
 
 /**
  * Prebook a rate (lock rate & validate availability)
- * @param {string} book_hash - Book hash from hotel page (h-...) or prebooked hash (p-...)
+ * @param {string} book_hash - Match hash (m-...) from search results, book hash (h-...) from hotel page, or prebooked hash (p-...)
  * @param {Array} guests - Guests array [{ adults: 2, children: [] }]
  * @param {string} residency - Residency code (uppercase, e.g., 'US')
  * @param {string} language - Language code (default: 'en')
@@ -177,9 +177,10 @@ export async function prebookRate(book_hash, guests, residency = 'US', language 
       await waitForRateLimit(endpoint);
     }
 
-    // Validate hash format (must be book_hash h-... or prebooked hash p-..., not match_hash m-...)
-    if (!book_hash || (!book_hash.startsWith('h-') && !book_hash.startsWith('p-'))) {
-      throw new Error(`Invalid hash format for prebook. Expected book_hash (h-...) or prebooked hash (p-...), got: ${book_hash}`);
+    // Validate hash format (accepts match_hash m-..., book_hash h-..., or prebooked hash p-...)
+    // ETG API /hotel/prebook/ accepts match_hash and returns book_hash
+    if (!book_hash || (!book_hash.startsWith('m-') && !book_hash.startsWith('h-') && !book_hash.startsWith('p-'))) {
+      throw new Error(`Invalid hash format for prebook. Expected match_hash (m-...), book_hash (h-...), or prebooked hash (p-...), got: ${book_hash}`);
     }
 
     // Validate guests format
