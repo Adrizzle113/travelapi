@@ -60,18 +60,36 @@ router.post("/hotel/details", async (req, res) => {
     let bookingOptions = [];
     
     if (finalCheckin && finalCheckout) {
+      // ✅ Convert residency to uppercase for /search/hp/ endpoint
       const hotelPage = await getHotelPage(finalHotelId, {
         checkin: finalCheckin,
         checkout: finalCheckout,
         guests: finalGuests,
         currency,
         language,
-        residency: normalizedResidency
+        residency: normalizedResidency.toUpperCase()  // ✅ Uppercase for /search/hp/
       });
       
       // Extract data from hotel page
-      rates = hotelPage.rates || [];
-      room_groups = hotelPage.room_groups || [];
+      // ✅ /search/hp/ endpoint returns rates with book_hash (h-...) field
+      // Handle both response structures: direct rates or nested in hotels array
+      if (hotelPage.hotels && Array.isArray(hotelPage.hotels) && hotelPage.hotels.length > 0) {
+        // Response structure: { hotels: [{ rates: [...], room_groups: [...] }] }
+        rates = hotelPage.hotels[0].rates || [];
+        room_groups = hotelPage.hotels[0].room_groups || [];
+      } else {
+        // Response structure: { rates: [...], room_groups: [...] }
+        rates = hotelPage.rates || [];
+        room_groups = hotelPage.room_groups || [];
+      }
+      
+      // Verify book_hash is present in rates (for debugging)
+      if (rates.length > 0 && !rates[0].book_hash) {
+        console.warn('⚠️ Warning: Rate object missing book_hash field. Expected from /search/hp/ endpoint.');
+        console.warn('⚠️ First rate object keys:', Object.keys(rates[0] || {}));
+      } else if (rates.length > 0) {
+        console.log(`✅ Found ${rates.length} rates with book_hash from /search/hp/ endpoint`);
+      }
       
       // Build booking options
       bookingOptions = rates.map((rate, index) => ({

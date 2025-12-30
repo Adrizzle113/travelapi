@@ -194,8 +194,8 @@ export async function getHotelInformation(hotelId, language = 'en') {
  * @returns {Promise<Object>} - Hotel page data with rates
  */
 export async function getHotelPage(hotelId, params) {
-  const { checkin, checkout, guests, currency = 'USD', residency = 'us', language = 'en' } = params;
-  const endpoint = '/hotel/info/'; // Using hotel/info endpoint based on rate limits
+  const { checkin, checkout, guests, currency = 'USD', residency = 'US', language = 'en' } = params;
+  const endpoint = '/search/hp/'; // ✅ Changed from /hotel/info/ to /search/hp/ for bookable rates
 
   try {
     // Check and wait for rate limit
@@ -207,12 +207,13 @@ export async function getHotelPage(hotelId, params) {
 
     console.log(`🏨 ETG getHotelPage: ${hotelId} (${rateLimitCheck.remaining || '?'} requests remaining)`);
 
-    // FIXED: Changed from /hotel/info/hotelpage/ to /hotel/info/ (correct ETG API endpoint)
-    const response = await apiClient.post('/hotel/info/', {
-      hotel_id: hotelId,
+    // ✅ Use /search/hp/ endpoint with correct parameters (id field, uppercase residency)
+    const normalizedResidency = (residency || 'US').toUpperCase();
+    const response = await apiClient.post('/search/hp/', {
+      id: hotelId,        // ✅ Changed from hotel_id to id
       checkin,
       checkout,
-      residency,
+      residency: normalizedResidency,  // ✅ Uppercase for /search/hp/
       language,
       guests,
       currency
@@ -220,7 +221,7 @@ export async function getHotelPage(hotelId, params) {
       timeout: TIMEOUTS.hotelPage
     });
 
-    // Record successful request (using hotel/info endpoint for rate limiting)
+    // Record successful request (using search/hp endpoint for rate limiting)
     recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
