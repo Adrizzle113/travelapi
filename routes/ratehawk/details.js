@@ -6,6 +6,7 @@
 import express from "express";
 import { getHotelInformation } from "../../services/hotel/hotelInfoService.js";
 import { getHotelPage } from "../../services/etg/etgClient.js";
+import { normalizeResidency } from "../../utils/residencyNormalizer.js";
 
 const router = express.Router();
 
@@ -32,10 +33,14 @@ router.post("/hotel/details", async (req, res) => {
   const finalCheckout = checkout || searchContext?.checkout;
   const finalGuests = guests || searchContext?.guests || [{ adults: 2, children: [] }];
 
+  // Normalize residency parameter (e.g., "en-us" → "us")
+  const normalizedResidency = normalizeResidency(residency);
+
   console.log("🏨 === HOTEL DETAILS REQUEST ===");
   console.log(`Hotel ID: ${finalHotelId}`);
   console.log(`Check-in: ${finalCheckin}`);
   console.log(`Check-out: ${finalCheckout}`);
+  console.log(`🌍 Residency: ${residency} → ${normalizedResidency} (normalized)`);
 
   // Validation
   if (!finalHotelId) {
@@ -61,7 +66,7 @@ router.post("/hotel/details", async (req, res) => {
         guests: finalGuests,
         currency,
         language,
-        residency
+        residency: normalizedResidency
       });
       
       // Extract data from hotel page

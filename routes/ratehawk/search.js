@@ -10,6 +10,7 @@ import { executeSearch, paginateSearch } from "../../services/search/searchServi
 import { validateRegionId, validateSearchParams } from "../../middleware/validation.js";
 import { handleApiError } from "../../utils/errorHandler.js";
 import { PAGINATION } from "../../config/constants.js";
+import { normalizeResidency } from "../../utils/residencyNormalizer.js";
 
 const router = express.Router();
 
@@ -81,11 +82,15 @@ router.get("/search", async (req, res) => {
   // Normalize pagination parameters
   const { page, limit } = normalizePaginationParams(pageParam, limitParam);
 
+  // Normalize residency parameter (e.g., "en-us" → "us")
+  const normalizedResidency = normalizeResidency(residency);
+
   console.log("🔍 === ETG API SEARCH REQUEST (GET) ===");
   console.log(`🗺️ Destination: ${destination}`);
   console.log(`📅 Check-in: ${checkin}`);
   console.log(`📅 Check-out: ${checkout}`);
   console.log(`👥 Guests (raw): ${guestsParam}`);
+  console.log(`🌍 Residency: ${residency} → ${normalizedResidency} (normalized)`);
   console.log(`📄 Pagination: page=${page}, limit=${limit}`);
 
   // Parse guests if it's a string
@@ -120,7 +125,7 @@ router.get("/search", async (req, res) => {
       checkout,
       guests,
       currency,
-      residency,
+      residency: normalizedResidency,
     });
 
     const duration = Date.now() - startTime;
@@ -196,6 +201,9 @@ router.post("/search", validateRegionId, validateSearchParams, async (req, res) 
   // Normalize pagination parameters
   const { page, limit } = normalizePaginationParams(pageParam, limitParam);
 
+  // Normalize residency parameter (e.g., "en-us" → "us")
+  const normalizedResidency = normalizeResidency(residency);
+
   console.log("🔍 === ETG API SEARCH REQUEST (POST) ===");
   console.log(`👤 User ID: ${userId}`);
   console.log(`🔢 Region ID: ${region_id}`);
@@ -204,7 +212,7 @@ router.post("/search", validateRegionId, validateSearchParams, async (req, res) 
   console.log(`📅 Check-in: ${checkin}`);
   console.log(`📅 Check-out: ${checkout}`);
   console.log(`👥 Guests: ${JSON.stringify(guests)}`);
-  console.log(`🌍 Residency: ${residency}`);
+  console.log(`🌍 Residency: ${residency} → ${normalizedResidency} (normalized)`);
   console.log(`💰 Currency: ${currency}`);
   console.log(`📄 Pagination: page=${page}, limit=${limit}`);
 
@@ -221,7 +229,7 @@ router.post("/search", validateRegionId, validateSearchParams, async (req, res) 
       checkout,
       guests,
       currency,
-      residency,
+      residency: normalizedResidency,
     });
 
     const duration = Date.now() - startTime;
