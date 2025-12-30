@@ -289,7 +289,7 @@ export async function getHotelWithRates(hotelId, searchParams) {
     console.log(`🏨 ETG getHotelWithRates: ${hotelId}`);
 
     const requestBody = {
-      ids: [hotelId],  // Array of hotel IDs
+      id: hotelId,  // Single hotel ID string - use 'id' not 'ids'
       checkin,
       checkout,
       residency,
