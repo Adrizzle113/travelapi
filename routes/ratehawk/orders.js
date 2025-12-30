@@ -103,6 +103,15 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Prebook error:", error);
+    console.error("   Error details:", {
+      message: error.message,
+      status: error.response?.status,
+      statusCode: error.statusCode,
+      statusText: error.response?.statusText,
+      url: error.config?.url,
+      method: error.config?.method || req.method,
+      path: req.path
+    });
 
     // Check if it's a 404 from ETG API
     if (error.response?.status === 404 || error.statusCode === 404) {

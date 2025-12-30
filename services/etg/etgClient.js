@@ -207,7 +207,8 @@ export async function getHotelPage(hotelId, params) {
 
     console.log(`🏨 ETG getHotelPage: ${hotelId} (${rateLimitCheck.remaining || '?'} requests remaining)`);
 
-    const response = await apiClient.post('/hotel/info/hotelpage/', {
+    // FIXED: Changed from /hotel/info/hotelpage/ to /hotel/info/ (correct ETG API endpoint)
+    const response = await apiClient.post('/hotel/info/', {
       hotel_id: hotelId,
       checkin,
       checkout,

@@ -37,7 +37,13 @@ export function requestTracker(req, res, next) {
     console.log(memoryPressure.message);
   }
 
+  // Log request with method and path for debugging routing issues
   console.log(`📨 [${requestId}] ${req.method} ${req.path} - Memory: ${startMemory.heapUsed}MB heap / ${startMemory.rss}MB RSS`);
+  
+  // Additional logging for POST requests to help debug routing
+  if (req.method === 'POST') {
+    console.log(`   POST request to: ${req.originalUrl || req.url}`);
+  }
 
   const originalSend = res.send;
   res.send = function (data) {

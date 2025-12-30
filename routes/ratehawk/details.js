@@ -112,22 +112,32 @@ router.post("/hotel/details", async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Hotel details error:", error);
+    console.error("   Error details:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      url: error.config?.url,
+      method: error.config?.method
+    });
 
-    // Check if it's a 404 from ETG API (hotel not found or endpoint not available)
-    if (error.response?.status === 404) {
+    // Check if it's a 404 from ETG API
+    if (error.response?.status === 404 || error.statusCode === 404) {
+      const isEndpointIssue = error.message?.includes('hotelpage') || error.config?.url?.includes('hotelpage');
       return res.status(404).json({
         success: false,
-        error: "Hotel not found or endpoint not available",
-        message: error.response?.data?.error?.message || "The hotel may not be available in the ETG inventory, or the API endpoint is not accessible with your credentials.",
+        error: isEndpointIssue ? "ETG API endpoint not found" : "Hotel not found",
+        message: isEndpointIssue 
+          ? "The ETG API endpoint path may be incorrect. Please verify the endpoint configuration."
+          : (error.response?.data?.error?.message || "The hotel may not be available in the ETG inventory, or the hotel ID is invalid."),
         hotelId: finalHotelId,
-        etgError: error.response?.data?.error || "page not found",
+        etgError: error.response?.data?.error || error.message || "not found",
         duration: `${duration}ms`,
         timestamp: new Date().toISOString()
       });
     }
 
     // Check if it's an authentication error
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    if (error.response?.status === 401 || error.response?.status === 403 || error.statusCode === 401 || error.statusCode === 403) {
       return res.status(401).json({
         success: false,
         error: "API authentication failed",
@@ -140,6 +150,7 @@ router.post("/hotel/details", async (req, res) => {
     res.status(500).json({
       success: false,
       error: `Failed to get hotel details: ${error.message}`,
+      hotelId: finalHotelId,
       duration: `${duration}ms`,
       timestamp: new Date().toISOString()
     });

@@ -248,12 +248,18 @@ app.get("/", (req, res) => {
   });
 });
 
-// 404 handler
+// 404 handler - Must be after all routes but before error handler
 app.use((req, res) => {
+  // Log 404s for debugging routing issues
+  console.log(`❌ 404 - Endpoint not found: ${req.method} ${req.path}`);
+  console.log(`   Original URL: ${req.originalUrl || req.url}`);
+  console.log(`   Request ID: ${req.requestId || 'unknown'}`);
+  
   res.status(404).json({
     error: "Endpoint not found",
     path: req.path,
     method: req.method,
+    originalUrl: req.originalUrl || req.url,
     requestId: req.requestId,
     timestamp: new Date().toISOString(),
   });
