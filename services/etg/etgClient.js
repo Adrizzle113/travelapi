@@ -425,8 +425,9 @@ export async function getBookingForm(bookHash, language = 'en') {
  * Rate Limit: 30 requests/minute
  * Official Doc: "Start booking process - Creates booking (async)"
  * 
- * Input: book_hash (from prebook)
- * Output: order_id + status (usually "processing")
+ * Supports two flows:
+ * - Flow 1: Input: book_hash (from prebook) → Output: order_id + status
+ * - Flow 2: Input: order_id + item_id (from booking/form) → Output: booking confirmation
  * 
  * This is STEP 3 of the booking flow
  * Note: This is ASYNC - you must poll /finish/status/ until confirmed
@@ -443,19 +444,84 @@ export async function finishBooking(bookingData) {
 
     const {
       bookHash,
+      order_id,
+      item_id,
+      partner_order_id,
+      guests,
+      payment_type,
+      paymentType,
       language = 'en',
       userIp,
-      paymentType = 'deposit'
+      user_ip,
+      email,
+      phone,
+      upsell_data
     } = bookingData;
 
-    console.log(`🎯 ETG finishBooking: ${bookHash.substring(0, 20)}...`);
+    let requestBody;
 
-    const requestBody = {
-      hash: bookHash,
-      language,
-      payment_type: paymentType,
-      user_ip: userIp
-    };
+    // Flow 2: Using order_id and item_id (from booking/form step)
+    if (order_id && item_id) {
+      // Validate required parameters
+      if (!partner_order_id) {
+        throw new Error('partner_order_id is required when using order_id and item_id');
+      }
+      if (!guests || !Array.isArray(guests) || guests.length === 0) {
+        throw new Error('guests array is required and must not be empty');
+      }
+      if (!payment_type && !paymentType) {
+        throw new Error('payment_type is required');
+      }
+
+      // Convert order_id and item_id to numbers (RateHawk API expects numbers, not strings)
+      const orderIdNum = typeof order_id === 'string' ? parseInt(order_id, 10) : Number(order_id);
+      const itemIdNum = typeof item_id === 'string' ? parseInt(item_id, 10) : Number(item_id);
+      
+      if (isNaN(orderIdNum) || isNaN(itemIdNum)) {
+        throw new Error(`Invalid order_id or item_id: order_id=${order_id}, item_id=${item_id}`);
+      }
+
+      // Normalize payment_type
+      const normalizedPaymentType = (payment_type || paymentType || 'deposit').toLowerCase().trim();
+      const validPaymentTypes = ['deposit', 'now', 'hotel'];
+      
+      if (!validPaymentTypes.includes(normalizedPaymentType)) {
+        throw new Error(`Invalid payment_type: "${payment_type || paymentType}". Must be one of: ${validPaymentTypes.join(', ')}`);
+      }
+
+      console.log(`🎯 ETG finishBooking: order_id=${orderIdNum}, item_id=${itemIdNum}`);
+
+      requestBody = {
+        order_id: orderIdNum,  // Send as number
+        item_id: itemIdNum,    // Send as number
+        guests,
+        payment_type: normalizedPaymentType,
+        partner_order_id,
+        language
+      };
+
+      // Add optional fields
+      if (upsell_data && Array.isArray(upsell_data) && upsell_data.length > 0) {
+        requestBody.upsell_data = upsell_data;
+      }
+      // Note: email, phone, and user_ip might not be accepted at top level
+      // They may need to be in guests array or not included at all
+
+    } 
+    // Flow 1: Using bookHash (from prebook step)
+    else if (bookHash) {
+      console.log(`🎯 ETG finishBooking: ${bookHash.substring(0, 20)}...`);
+
+      requestBody = {
+        hash: bookHash,
+        language,
+        payment_type: paymentType || payment_type || 'deposit',
+        user_ip: userIp || user_ip
+      };
+    } 
+    else {
+      throw new Error('Either bookHash or (order_id and item_id) must be provided');
+    }
 
     const response = await apiClient.post('/hotel/order/booking/finish/', requestBody, {
       timeout: TIMEOUTS.booking

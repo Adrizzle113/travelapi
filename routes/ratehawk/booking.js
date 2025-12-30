@@ -88,14 +88,17 @@ router.post('/order/finish', async (req, res) => {
       guests,
       email,
       phone,
-      user_ip
+      user_ip,
+      language = 'en',
+      upsell_data
     } = req.body;
     
+    // Validation - order_id and item_id are required (from booking/form step)
     if (!order_id) {
       return res.status(400).json({ 
         success: false,
         error: {
-          message: 'order_id is required and must be a non-empty string (from booking/form response)',
+          message: 'order_id is required (from booking/form response)',
           code: 'MISSING_ORDER_ID'
         }
       });
@@ -105,8 +108,38 @@ router.post('/order/finish', async (req, res) => {
       return res.status(400).json({ 
         success: false,
         error: {
-          message: 'item_id is required',
+          message: 'item_id is required (from booking/form response)',
           code: 'MISSING_ITEM_ID'
+        }
+      });
+    }
+
+    if (!partner_order_id) {
+      return res.status(400).json({ 
+        success: false,
+        error: {
+          message: 'partner_order_id is required',
+          code: 'MISSING_PARTNER_ORDER_ID'
+        }
+      });
+    }
+
+    if (!guests || !Array.isArray(guests) || guests.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: {
+          message: 'guests array is required and must not be empty',
+          code: 'MISSING_GUESTS'
+        }
+      });
+    }
+
+    if (!payment_type) {
+      return res.status(400).json({ 
+        success: false,
+        error: {
+          message: 'payment_type is required',
+          code: 'MISSING_PAYMENT_TYPE'
         }
       });
     }
@@ -120,7 +153,8 @@ router.post('/order/finish', async (req, res) => {
       email,
       phone,
       user_ip,
-      language: 'en'
+      language,
+      upsell_data
     });
     
     res.json({ 
