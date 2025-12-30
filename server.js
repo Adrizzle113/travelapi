@@ -19,6 +19,7 @@ import userRoutes from "./src/routes/userRoutes.js";
 import { BookingFormCreationRoute } from "./src/routes/createBookingFormRoutes.js";
 import DestinationRoute from "./src/routes/destinationRoute.js";
 import sessionsRoutes from "./routes/sessions.js";
+import bookingRoutes from './routes/ratehawk/booking.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -236,6 +237,7 @@ app.use("/api/booking-form", BookingFormCreationRoute);
 app.use("/api/destinations", DestinationRoute);
 app.use("/api/destination", DestinationRoute);
 app.use("/api/sessions", sessionsRoutes);
+app.use('/api/ratehawk', bookingRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
