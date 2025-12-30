@@ -249,6 +249,12 @@ router.post("/order/status", validateOrderId, async (req, res) => {
 
   console.log("📊 === ORDER STATUS REQUEST ===");
   console.log(`Order ID: ${order_id}`);
+  
+  // Check if this is a fake order ID
+  const isFakeId = /^ORD-\d+$/.test(order_id);
+  if (isFakeId) {
+    console.log(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
+  }
 
   // Validation
   if (!order_id) {
@@ -266,6 +272,12 @@ router.post("/order/status", validateOrderId, async (req, res) => {
     const result = await getOrderStatus(order_id);
 
     const duration = Date.now() - startTime;
+    
+    if (isFakeId) {
+      console.log(`🎭 [MOCK RESPONSE] Returning mock data for fake order ID`);
+    } else {
+      console.log(`✅ [REAL API CALL] Order status retrieved from ETG API`);
+    }
 
     res.json({
       success: true,
@@ -277,6 +289,10 @@ router.post("/order/status", validateOrderId, async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Order status error:", error);
+    
+    if (isFakeId && error.statusCode === 404) {
+      console.error(`⚠️ Fake order ID ${order_id} returned 404. Enable ENABLE_MOCK_BOOKINGS=true for mock responses.`);
+    }
 
     res.status(error.statusCode || 500).json({
       success: false,
@@ -300,6 +316,12 @@ router.post("/order/info", validateOrderId, async (req, res) => {
 
   console.log("📄 === ORDER INFO REQUEST ===");
   console.log(`Order ID: ${order_id}`);
+  
+  // Check if this is a fake order ID
+  const isFakeId = /^ORD-\d+$/.test(order_id);
+  if (isFakeId) {
+    console.log(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
+  }
 
   // Validation
   if (!order_id) {
@@ -317,6 +339,12 @@ router.post("/order/info", validateOrderId, async (req, res) => {
     const result = await getOrderInfo(order_id);
 
     const duration = Date.now() - startTime;
+    
+    if (isFakeId) {
+      console.log(`🎭 [MOCK RESPONSE] Returning mock data for fake order ID`);
+    } else {
+      console.log(`✅ [REAL API CALL] Order info retrieved from ETG API`);
+    }
 
     res.json({
       success: true,
@@ -328,6 +356,10 @@ router.post("/order/info", validateOrderId, async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Order info error:", error);
+    
+    if (isFakeId && error.statusCode === 404) {
+      console.error(`⚠️ Fake order ID ${order_id} returned 404. Enable ENABLE_MOCK_BOOKINGS=true for mock responses.`);
+    }
 
     res.status(error.statusCode || 500).json({
       success: false,
@@ -351,6 +383,12 @@ router.post("/order/documents", validateOrderId, async (req, res) => {
 
   console.log("📑 === ORDER DOCUMENTS REQUEST ===");
   console.log(`Order ID: ${order_id}`);
+  
+  // Check if this is a fake order ID
+  const isFakeId = /^ORD-\d+$/.test(order_id);
+  if (isFakeId) {
+    console.log(`⚠️ [FAKE ID DETECTED] Order ID format suggests frontend simulation: ${order_id}`);
+  }
 
   // Validation
   if (!order_id) {
@@ -368,6 +406,12 @@ router.post("/order/documents", validateOrderId, async (req, res) => {
     const result = await getOrderDocuments(order_id);
 
     const duration = Date.now() - startTime;
+    
+    if (isFakeId) {
+      console.log(`🎭 [MOCK RESPONSE] Returning mock data for fake order ID`);
+    } else {
+      console.log(`✅ [REAL API CALL] Order documents retrieved from ETG API`);
+    }
 
     res.json({
       success: true,
@@ -379,6 +423,10 @@ router.post("/order/documents", validateOrderId, async (req, res) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Order documents error:", error);
+    
+    if (isFakeId && error.statusCode === 404) {
+      console.error(`⚠️ Fake order ID ${order_id} returned 404. Enable ENABLE_MOCK_BOOKINGS=true for mock responses.`);
+    }
 
     res.status(error.statusCode || 500).json({
       success: false,

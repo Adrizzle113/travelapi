@@ -15,6 +15,9 @@ if (!ETG_API_KEY) {
   console.warn('⚠️ ETG_API_KEY not set - Booking API calls will fail');
 }
 
+// Development mode configuration
+const ENABLE_MOCK_BOOKINGS = process.env.ENABLE_MOCK_BOOKINGS === 'true' || process.env.NODE_ENV === 'development';
+
 // Timeout configurations for booking operations
 const TIMEOUTS = {
   prebook: 20000,
@@ -41,6 +44,79 @@ const apiClient = createAxiosWithRetry({
   maxRetries: 1 // Reduced retries for booking operations to prevent duplicates
 });
 
+/**
+ * Detect if an order ID is a fake/simulated ID from frontend
+ * Format: ORD-{timestamp} (e.g., ORD-1767062835773)
+ * @param {string} orderId - Order ID to check
+ * @returns {boolean} - True if fake order ID
+ */
+function isFakeOrderId(orderId) {
+  if (!orderId || typeof orderId !== 'string') {
+    return false;
+  }
+  // Match pattern: ORD- followed by digits (timestamp)
+  return /^ORD-\d+$/.test(orderId);
+}
+
+/**
+ * Generate mock order status response for fake order IDs
+ * @param {string} orderId - Fake order ID
+ * @returns {Object} - Mock status response
+ */
+function generateMockOrderStatus(orderId) {
+  // Simulate processing status that eventually becomes confirmed
+  const timestamp = parseInt(orderId.split('-')[1]) || Date.now();
+  const age = Date.now() - timestamp;
+  const status = age > 10000 ? 'confirmed' : 'processing'; // Confirmed after 10 seconds
+
+  return {
+    status,
+    order_id: orderId,
+    message: status === 'confirmed' ? 'Order confirmed successfully' : 'Order is being processed',
+    created_at: new Date(timestamp).toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+/**
+ * Generate mock order info response for fake order IDs
+ * @param {string} orderId - Fake order ID
+ * @returns {Object} - Mock info response
+ */
+function generateMockOrderInfo(orderId) {
+  return {
+    order_id: orderId,
+    hotel_name: 'Sample Hotel',
+    hotel_id: 'sample-hotel-123',
+    checkin: '2025-01-15',
+    checkout: '2025-01-17',
+    guests: [
+      {
+        name: 'John Doe',
+        email: 'john@example.com'
+      }
+    ],
+    total_amount: 299.99,
+    currency: 'USD',
+    status: 'confirmed',
+    created_at: new Date().toISOString()
+  };
+}
+
+/**
+ * Generate mock order documents response for fake order IDs
+ * @param {string} orderId - Fake order ID
+ * @returns {Object} - Mock documents response
+ */
+function generateMockOrderDocuments(orderId) {
+  return {
+    order_id: orderId,
+    voucher_url: `https://example.com/vouchers/${orderId}.pdf`,
+    invoice_url: `https://example.com/invoices/${orderId}.pdf`,
+    confirmation_url: `https://example.com/confirmations/${orderId}.pdf`
+  };
+}
+
 function formatAxiosError(error, operation) {
   const categorized = categorizeError(error);
   const enhancedError = new Error(categorized.message);
@@ -58,6 +134,16 @@ function formatAxiosError(error, operation) {
     if (status === 400) {
       const errorMessage = errorData?.message || errorData?.error || error.message;
       enhancedError.message = `${operation} failed - Invalid request: ${errorMessage}`;
+    } else if (status === 404) {
+      // Distinguish between endpoint not found vs order not found
+      const errorMessage = errorData?.message || errorData?.error || error.message;
+      if (errorMessage && errorMessage.toLowerCase().includes('page not found')) {
+        enhancedError.message = `${operation} failed - API endpoint not found. Check endpoint configuration.`;
+        enhancedError.category = 'api_configuration_error';
+      } else {
+        enhancedError.message = `${operation} failed - Order not found: ${errorMessage}`;
+        enhancedError.category = 'order_not_found';
+      }
     } else if (status === 503 || status === 502) {
       enhancedError.message = `${operation} failed - ETG API temporarily unavailable (${status})`;
     } else if (status === 429) {
@@ -201,13 +287,42 @@ export async function getOrderStatus(order_id) {
   try {
     console.log(`📊 ETG getOrderStatus: order_id=${order_id}`);
 
-    const response = await apiClient.post('/hotel/order/status/', {
-      order_id
-    }, {
-      timeout: TIMEOUTS.orderStatus
-    });
+    // Check for fake order IDs (frontend simulation)
+    if (isFakeOrderId(order_id)) {
+      if (ENABLE_MOCK_BOOKINGS) {
+        console.log(`🎭 [MOCK MODE] Detected fake order ID: ${order_id} - Returning mock response`);
+        return generateMockOrderStatus(order_id);
+      } else {
+        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID.`);
+      }
+    }
+
+    // Try the correct ETG API endpoint based on documentation structure
+    // ETG API v3 uses /bookings/ endpoint for post-booking operations
+    let response;
+    try {
+      // First try: /bookings/ endpoint (POST with order_id in body)
+      response = await apiClient.post('/bookings/', {
+        order_id
+      }, {
+        timeout: TIMEOUTS.orderStatus
+      });
+    } catch (firstError) {
+      // Fallback: Try /hotel/order/status without trailing slash
+      if (firstError.response?.status === 404) {
+        console.log(`⚠️ /bookings/ endpoint returned 404, trying /hotel/order/status`);
+        response = await apiClient.post('/hotel/order/status', {
+          order_id
+        }, {
+          timeout: TIMEOUTS.orderStatus
+        });
+      } else {
+        throw firstError;
+      }
+    }
 
     if (response.data && response.data.status === 'ok') {
+      console.log(`✅ Order status retrieved successfully`);
       return response.data.data;
     }
 
@@ -219,6 +334,7 @@ export async function getOrderStatus(order_id) {
     if (error.response) {
       console.error('   Status:', error.response.status);
       console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));
+      console.error('   Endpoint attempted:', error.config?.url || 'unknown');
     }
     throw formattedError;
   }
@@ -233,11 +349,38 @@ export async function getOrderInfo(order_id) {
   try {
     console.log(`📄 ETG getOrderInfo: order_id=${order_id}`);
 
-    const response = await apiClient.post('/hotel/order/info/', {
-      order_id
-    }, {
-      timeout: TIMEOUTS.orderInfo
-    });
+    // Check for fake order IDs (frontend simulation)
+    if (isFakeOrderId(order_id)) {
+      if (ENABLE_MOCK_BOOKINGS) {
+        console.log(`🎭 [MOCK MODE] Detected fake order ID: ${order_id} - Returning mock response`);
+        return generateMockOrderInfo(order_id);
+      } else {
+        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID.`);
+      }
+    }
+
+    // Try the correct ETG API endpoint
+    let response;
+    try {
+      // First try: /bookings/ endpoint with order_id
+      response = await apiClient.post('/bookings/', {
+        order_id
+      }, {
+        timeout: TIMEOUTS.orderInfo
+      });
+    } catch (firstError) {
+      // Fallback: Try /hotel/order/info without trailing slash
+      if (firstError.response?.status === 404) {
+        console.log(`⚠️ /bookings/ endpoint returned 404, trying /hotel/order/info`);
+        response = await apiClient.post('/hotel/order/info', {
+          order_id
+        }, {
+          timeout: TIMEOUTS.orderInfo
+        });
+      } else {
+        throw firstError;
+      }
+    }
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order info retrieved successfully`);
@@ -252,6 +395,7 @@ export async function getOrderInfo(order_id) {
     if (error.response) {
       console.error('   Status:', error.response.status);
       console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));
+      console.error('   Endpoint attempted:', error.config?.url || 'unknown');
     }
     throw formattedError;
   }
@@ -266,11 +410,53 @@ export async function getOrderDocuments(order_id) {
   try {
     console.log(`📑 ETG getOrderDocuments: order_id=${order_id}`);
 
-    const response = await apiClient.post('/hotel/order/documents/', {
-      order_id
-    }, {
-      timeout: TIMEOUTS.orderDocuments
-    });
+    // Check for fake order IDs (frontend simulation)
+    if (isFakeOrderId(order_id)) {
+      if (ENABLE_MOCK_BOOKINGS) {
+        console.log(`🎭 [MOCK MODE] Detected fake order ID: ${order_id} - Returning mock response`);
+        return generateMockOrderDocuments(order_id);
+      } else {
+        throw new Error(`Invalid order ID format: ${order_id}. This appears to be a simulated/test order ID.`);
+      }
+    }
+
+    // Try the correct ETG API endpoint
+    // Documents may use /voucher/ or /invoice/ endpoints
+    let response;
+    try {
+      // First try: /bookings/ endpoint
+      response = await apiClient.post('/bookings/', {
+        order_id
+      }, {
+        timeout: TIMEOUTS.orderDocuments
+      });
+    } catch (firstError) {
+      // Fallback 1: Try /hotel/order/documents without trailing slash
+      if (firstError.response?.status === 404) {
+        try {
+          console.log(`⚠️ /bookings/ endpoint returned 404, trying /hotel/order/documents`);
+          response = await apiClient.post('/hotel/order/documents', {
+            order_id
+          }, {
+            timeout: TIMEOUTS.orderDocuments
+          });
+        } catch (secondError) {
+          // Fallback 2: Try /voucher/ endpoint
+          if (secondError.response?.status === 404) {
+            console.log(`⚠️ /hotel/order/documents returned 404, trying /voucher/`);
+            response = await apiClient.post('/voucher/', {
+              order_id
+            }, {
+              timeout: TIMEOUTS.orderDocuments
+            });
+          } else {
+            throw secondError;
+          }
+        }
+      } else {
+        throw firstError;
+      }
+    }
 
     if (response.data && response.data.status === 'ok') {
       console.log(`✅ Order documents retrieved successfully`);
@@ -285,6 +471,7 @@ export async function getOrderDocuments(order_id) {
     if (error.response) {
       console.error('   Status:', error.response.status);
       console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));
+      console.error('   Endpoint attempted:', error.config?.url || 'unknown');
     }
     throw formattedError;
   }
