@@ -2,10 +2,9 @@ import axios from 'axios';
 
 // ETG API Configuration
 const BASE_URL = 'https://api.worldota.net/api/b2b/v3';
-const API_KEY = process.env.ETG_API_KEY || '11606:ff9702bb-ba93-4996-a31e-547983c51530';
 
-// Parse API credentials
-const [partnerId, password] = API_KEY.split(':');
+const partnerId = process.env.ETG_PARTNER_ID || '11606';
+const password = process.env.ETG_API_KEY || 'ff9702bb-ba93-4996-a31e-547983c51530';
 
 // Create axios instance with authentication
 const apiClient = axios.create({

@@ -244,6 +244,10 @@ router.post("/order/form", validateOrderForm, async (req, res) => {
 
     const result = await getOrderForm(hash, partner_order_id, language, userIp);
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orders.js:245',message:'getOrderForm response before sending to client',data:{order_id:result.order_id,order_id_type:typeof result.order_id,item_id:result.item_id,item_id_type:typeof result.item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+
     const duration = Date.now() - startTime;
 
     res.json({
@@ -285,6 +289,10 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
     language = "en",
     upsell_data
   } = req.body;
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orders.js:276',message:'order/finish route handler entry',data:{order_id,order_id_type:typeof order_id,item_id,item_id_type:typeof item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
 
   console.log("✅ === ORDER FINISH REQUEST ===");
   console.log(`Order ID: ${order_id}`);
@@ -342,6 +350,9 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
   }
 
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orders.js:345',message:'calling finishOrder service',data:{order_id,order_id_type:typeof order_id,item_id,item_id_type:typeof item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     const result = await finishOrder(
       order_id,
       item_id,

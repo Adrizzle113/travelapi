@@ -285,6 +285,10 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
       console.log(`✅ Order form retrieved successfully`);
       const formData = response.data.data;
       
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:284',message:'getOrderForm response received',data:{order_id:formData.order_id,order_id_type:typeof formData.order_id,item_id:formData.item_id,item_id_type:typeof formData.item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      
       // Log order IDs if present (for debugging)
       if (formData.order_id) {
         console.log(`   Order ID: ${formData.order_id}`);
@@ -324,6 +328,10 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
  */
 export async function finishOrder(order_id, item_id, guests, payment_type, partner_order_id, language = 'en', upsell_data = null) {
   const endpoint = '/hotel/order/booking/finish/';
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookingService.js:325',message:'finishOrder service entry',data:{order_id,order_id_type:typeof order_id,item_id,item_id_type:typeof item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
 
   try {
     // Check and wait for rate limit

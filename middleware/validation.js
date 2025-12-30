@@ -384,8 +384,17 @@ export function validateOrderForm(req, res, next) {
 export function validateOrderFinish(req, res, next) {
   const { order_id, item_id, guests, payment_type, partner_order_id } = req.body;
 
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'validation.js:385',message:'validateOrderFinish entry',data:{order_id,order_id_type:typeof order_id,item_id,item_id_type:typeof item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+
   // Correct flow: order_id and item_id are required (from booking/form step)
-  if (!order_id || typeof order_id !== 'string' || order_id.trim() === '') {
+  // ETG API returns these as numbers, but we need strings for consistency
+  // Accept both numbers and strings, convert numbers to strings
+  if (!order_id) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'validation.js:390',message:'order_id validation failed - missing',data:{order_id,order_id_type:typeof order_id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return res.status(400).json({
       success: false,
       error: {
@@ -396,12 +405,49 @@ export function validateOrderFinish(req, res, next) {
     });
   }
 
-  if (!item_id || typeof item_id !== 'string' || item_id.trim() === '') {
+  // Convert number to string if needed (ETG API returns numbers)
+  if (typeof order_id === 'number') {
+    req.body.order_id = String(order_id);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'validation.js:400',message:'converted order_id from number to string',data:{original:order_id,converted:req.body.order_id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+  } else if (typeof order_id !== 'string' || order_id.trim() === '') {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'validation.js:403',message:'order_id validation failed - invalid type',data:{order_id,order_id_type:typeof order_id,order_id_value:order_id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'order_id must be a non-empty string or number (from booking/form response)',
+        code: 'INVALID_ORDER_ID_TYPE'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (!item_id) {
     return res.status(400).json({
       success: false,
       error: {
         message: 'item_id is required and must be a non-empty string (from booking/form response)',
         code: 'MISSING_ITEM_ID'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Convert number to string if needed (ETG API returns numbers)
+  if (typeof item_id === 'number') {
+    req.body.item_id = String(item_id);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/18f147b6-d8cd-4952-ab0d-c17062dbaa8f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'validation.js:420',message:'converted item_id from number to string',data:{original:item_id,converted:req.body.item_id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+  } else if (typeof item_id !== 'string' || item_id.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'item_id must be a non-empty string or number (from booking/form response)',
+        code: 'INVALID_ITEM_ID_TYPE'
       },
       timestamp: new Date().toISOString()
     });
@@ -461,12 +507,26 @@ export function validateOrderFinish(req, res, next) {
 export function validateOrderId(req, res, next) {
   const { order_id } = req.body;
 
-  if (!order_id || typeof order_id !== 'string' || order_id.trim() === '') {
+  if (!order_id) {
     return res.status(400).json({
       success: false,
       error: {
         message: 'order_id is required and must be a non-empty string',
         code: 'MISSING_ORDER_ID'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Convert number to string if needed (ETG API returns numbers)
+  if (typeof order_id === 'number') {
+    req.body.order_id = String(order_id);
+  } else if (typeof order_id !== 'string' || order_id.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'order_id must be a non-empty string or number',
+        code: 'INVALID_ORDER_ID_TYPE'
       },
       timestamp: new Date().toISOString()
     });

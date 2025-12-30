@@ -1,0 +1,3 @@
+chmod +x complete_test_booking.sh
+./complete_test_booking.sh
+
