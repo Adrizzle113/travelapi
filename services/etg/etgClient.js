@@ -167,15 +167,22 @@ export async function getHotelInformation(hotelId, language = 'en') {
 
 /**
  * Search hotels by region with live rates
- * Endpoint: /search/hp/ (NOT /search/serp/region/)
+ * Endpoint: /search/serp/region/
  * Method: POST
  * Rate Limit: 10 requests/minute
- * Official Doc: "Homepage search helpers" but actually returns full hotel search with rates
  * 
- * This is the CORRECT endpoint for getting hotel rates with availability
+ * This endpoint is for region-based searches (by region_id).
+ * For hotel ID-based searches, use /search/hp/ with ids parameter.
+ * 
+ * Request body requires:
+ * - region_id (integer) - Region ID for the search location
+ * - checkin, checkout (dates)
+ * - guests (array)
+ * - residency (country code, uppercase)
+ * - language, currency
  */
 export async function searchHotelsByRegion(searchParams) {
-  const endpoint = '/search/hp/';
+  const endpoint = '/search/serp/region/';
 
   try {
     // Check rate limit
@@ -207,7 +214,7 @@ export async function searchHotelsByRegion(searchParams) {
       currency
     };
 
-    const response = await apiClient.post('/search/hp/', requestBody, {
+    const response = await apiClient.post('/search/serp/region/', requestBody, {
       timeout: TIMEOUTS.search
     });
 
@@ -250,6 +257,9 @@ export async function searchHotelsByRegion(searchParams) {
  * Endpoint: /search/hp/
  * Method: POST
  * Rate Limit: 10 requests/minute
+ * 
+ * This endpoint is for hotel ID-based searches (uses ids parameter).
+ * For region-based searches, use /search/serp/region/ with region_id parameter.
  * 
  * This endpoint returns:
  * - Hotel static info (name, address, amenities, photos)
