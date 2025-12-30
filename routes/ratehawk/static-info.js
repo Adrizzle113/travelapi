@@ -78,8 +78,10 @@ router.post("/hotel/static-info", async (req, res) => {
 
     const extractedInfo = {
       description: extractDescription(hotelData.description_struct),
-      checkInTime: hotelData.check_in_time || null,
-      checkOutTime: hotelData.check_out_time || null,
+      check_in_time: hotelData.check_in_time || null,
+      check_out_time: hotelData.check_out_time || null,
+      checkInTime: hotelData.check_in_time || null, // Keep for backward compatibility
+      checkOutTime: hotelData.check_out_time || null, // Keep for backward compatibility
       address: hotelData.address || null,
       email: hotelData.email || null,
       phone: hotelData.phone || null,

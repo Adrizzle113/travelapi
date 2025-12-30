@@ -83,34 +83,26 @@ router.post("/hotel/details", async (req, res) => {
 
     const duration = Date.now() - startTime;
 
+    // Format response to match frontend expectations
     res.json({
       success: true,
-      message: "Hotel details fetched successfully",
       data: {
-        hotel: {
-          id: finalHotelId,
-          name: hotelInfo.name,
-          address: hotelInfo.address,
-          city: hotelInfo.city,
-          country: hotelInfo.country,
-          star_rating: hotelInfo.star_rating,
-          images: hotelInfo.images || [],
-          amenities: hotelInfo.amenities || [],
-          description: hotelInfo.description,
-          coordinates: hotelInfo.coordinates,
-          rates: rates,
-          room_groups: room_groups
+        data: {
+          hotels: [{
+            id: finalHotelId,
+            name: hotelInfo.name,
+            address: hotelInfo.address,
+            city: hotelInfo.city,
+            country: hotelInfo.country,
+            star_rating: hotelInfo.star_rating,
+            images: hotelInfo.images || [],
+            amenities: hotelInfo.amenities || [],
+            description: hotelInfo.description,
+            coordinates: hotelInfo.coordinates,
+            rates: rates,
+            room_groups: room_groups
+          }]
         }
-      },
-      hotelDetails: {
-        hotelId: finalHotelId,
-        rates: rates,
-        roomTypes: room_groups.map(rg => ({
-          id: rg.room_group_id,
-          name: rg.name || rg.name_struct?.main_name
-        })),
-        bookingOptions: bookingOptions,
-        room_groups: room_groups
       },
       from_cache: hotelInfo.from_cache || false,
       duration: `${duration}ms`,

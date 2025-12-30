@@ -22,6 +22,12 @@ const TIMEOUTS = {
   hotelInfo: 15000,
   hotelPage: 20000,
   autocomplete: 8000,
+  prebook: 20000,
+  orderForm: 15000,
+  orderFinish: 30000,
+  orderStatus: 10000,
+  orderInfo: 15000,
+  orderDocuments: 15000,
   default: 25000
 };
 

@@ -301,9 +301,151 @@ export function validateBookingForm(req, res, next) {
   next();
 }
 
+export function validatePrebook(req, res, next) {
+  const { book_hash, residency, currency } = req.body;
+
+  if (!book_hash || typeof book_hash !== 'string' || book_hash.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'book_hash is required and must be a non-empty string',
+        code: 'MISSING_BOOK_HASH'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (residency && typeof residency !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'residency must be a string',
+        code: 'INVALID_RESIDENCY'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (currency && typeof currency !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'currency must be a string',
+        code: 'INVALID_CURRENCY'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  next();
+}
+
+export function validateOrderForm(req, res, next) {
+  const { booking_hash, language } = req.body;
+
+  if (!booking_hash || typeof booking_hash !== 'string' || booking_hash.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'booking_hash is required and must be a non-empty string',
+        code: 'MISSING_BOOKING_HASH'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (language && typeof language !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'language must be a string',
+        code: 'INVALID_LANGUAGE'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  next();
+}
+
+export function validateOrderFinish(req, res, next) {
+  const { booking_hash, guests, payment_type } = req.body;
+
+  if (!booking_hash || typeof booking_hash !== 'string' || booking_hash.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'booking_hash is required and must be a non-empty string',
+        code: 'MISSING_BOOKING_HASH'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (!guests || !Array.isArray(guests) || guests.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'guests is required and must be a non-empty array',
+        code: 'MISSING_GUESTS'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Validate each guest object
+  for (let i = 0; i < guests.length; i++) {
+    const guest = guests[i];
+    if (!guest || typeof guest !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: `guest at index ${i} must be an object`,
+          code: 'INVALID_GUEST_FORMAT'
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  if (!payment_type || typeof payment_type !== 'string' || payment_type.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'payment_type is required and must be a non-empty string',
+        code: 'MISSING_PAYMENT_TYPE'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  next();
+}
+
+export function validateOrderId(req, res, next) {
+  const { order_id } = req.body;
+
+  if (!order_id || typeof order_id !== 'string' || order_id.trim() === '') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'order_id is required and must be a non-empty string',
+        code: 'MISSING_ORDER_ID'
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  next();
+}
+
 export default {
   validateRegionId,
   validateSearchParams,
   validateDateRange,
-  validateBookingForm
+  validateBookingForm,
+  validatePrebook,
+  validateOrderForm,
+  validateOrderFinish,
+  validateOrderId
 };
