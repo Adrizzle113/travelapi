@@ -8,7 +8,7 @@
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import axios from 'axios';
-import { searchHotels } from '../etg/etgClient.js';
+import { searchHotelsByRegion } from '../etg/etgClient.js';
 import { resolveDestination } from '../destination/destinationResolver.js';
 
 const prisma = new PrismaClient();
@@ -454,7 +454,17 @@ export async function executeSearch(searchParams) {
     const etgStartTime = Date.now();
     console.log(`🔍 [${requestId}] ETG API call: region_id=${region_id}, ${fullParams.checkin} → ${fullParams.checkout}`);
 
-    const results = await searchHotels(fullParams);
+    // Map parameters to match searchHotelsByRegion expected format
+    const etgParams = {
+      regionId: fullParams.region_id,
+      checkin: fullParams.checkin,
+      checkout: fullParams.checkout,
+      guests: fullParams.guests,
+      residency: fullParams.residency || 'US',
+      language: 'en',
+      currency: fullParams.currency || 'USD'
+    };
+    const results = await searchHotelsByRegion(etgParams);
 
     const etgDuration = Date.now() - etgStartTime;
     console.log(`⏱️ [${requestId}] ETG API responded in ${etgDuration}ms`);
