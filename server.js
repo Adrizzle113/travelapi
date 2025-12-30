@@ -62,6 +62,12 @@ const corsOptions = {
       return callback(null, true);
     }
     
+    // Allow all Lovable project domains
+    if (origin.endsWith('.lovableproject.com')) {
+      console.log(`✅ Allowing Lovable project domain: ${origin}`);
+      return callback(null, true);
+    }
+    
     const isAllowed = allowedOrigins.some(allowed => {
       if (allowed instanceof RegExp) {
         return allowed.test(origin);
