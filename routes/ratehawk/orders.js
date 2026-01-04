@@ -118,19 +118,42 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   }
 
   try {
-    // ✅ Pass guests and language to prebookRate (uppercase residency for prebook)
-    const result = await prebookRate(book_hash, guests, prebookResidency, language);
+  // ✅ Pass guests and language to prebookRate (uppercase residency for prebook)
+  const result = await prebookRate(book_hash, guests, prebookResidency, language);
 
-    const duration = Date.now() - startTime;
-
-    res.json({
-      success: true,
-      data: result,
-      timestamp: new Date().toISOString(),
-      duration: `${duration}ms`
+  // ✅ EXTRACT booking_hash from ETG response structure
+  const booking_hash = result?.hotels?.[0]?.rates?.[0]?.book_hash;
+  
+  if (!booking_hash) {
+    console.error('⚠️ No booking_hash in prebook response:', JSON.stringify(result, null, 2).substring(0, 500));
+    return res.status(500).json({
+      success: false,
+      error: {
+        message: 'Prebook succeeded but no booking_hash was returned',
+        code: 'MISSING_BOOKING_HASH'
+      },
+      timestamp: new Date().toISOString()
     });
+  }
 
-  } catch (error) {
+  console.log(`✅ Prebook successful: booking_hash=${booking_hash.substring(0, 30)}...`);
+
+  const duration = Date.now() - startTime;
+
+  res.json({
+    success: true,
+    data: {
+      booking_hash,  // ✅ Add at top level for frontend
+      hotels: result.hotels,
+      changes: result.changes || {},
+      price_changed: result.changes?.price_changed || false,
+      new_price: result.changes?.new_price
+    },
+    timestamp: new Date().toISOString(),
+    duration: `${duration}ms`
+  });
+
+} catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Prebook error:", error);
     console.error("   Error details:", {
