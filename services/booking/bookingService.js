@@ -269,11 +269,14 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
     }
 
     const payload = {
-      book_hash,
+      hash: book_hash,    // ✅ CRITICAL: Changed from 'book_hash' to 'hash'
       partner_order_id,
       language,
       user_ip
     };
+
+    console.log('📤 Sending payload to ETG API:');
+    console.log(JSON.stringify(payload, null, 2));
 
     const response = await apiClient.post(endpoint, payload, {
       timeout: TIMEOUTS.orderForm
