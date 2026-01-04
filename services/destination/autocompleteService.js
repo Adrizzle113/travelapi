@@ -17,7 +17,7 @@ try {
 const RATEHAWK_AUTOCOMPLETE_URL = 'https://www.ratehawk.com/api/site/multicomplete.json';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
-const PREFERRED_TYPES = ['city', 'region', 'location', 'hotel_city', 'poi'];
+const PREFERRED_TYPES = ['city', 'region', 'location', 'hotel_city', 'poi', 'hotel'];
 
 function generateCacheKey(query, locale) {
   const normalized = `${query.toLowerCase().trim()}:${locale}`;
@@ -27,14 +27,50 @@ function generateCacheKey(query, locale) {
 function normalizeResult(item) {
   if (!item) return null;
 
+  const type = (item.type || item.object_type || 'location').toLowerCase();
+  const isHotel = type === 'hotel' || item.hotel_id || item.hotelId || item.id?.startsWith('h-');
+
+  // Handle hotels differently from regions
+  if (isHotel) {
+    const hotelId = item.hotel_id || item.hotelId || item.id || null;
+    
+    if (!hotelId) {
+      console.warn('⚠️ Skipping hotel without hotel_id:', JSON.stringify(item).substring(0, 200));
+      return null;
+    }
+
+    let label = item.label || item.name || item.fullName || item.full_name || 'Unknown';
+    const city = item.city || item.city_name || null;
+    const countryName = item.country_name || item.countryName || item.country || null;
+
+    // Format hotel label with location context
+    if (city && !label.includes(city)) {
+      label = `${label}, ${city}`;
+    }
+    if (countryName && !label.includes(countryName)) {
+      label = `${label}, ${countryName}`;
+    }
+
+    return {
+      label,
+      hotel_id: hotelId,
+      type: 'hotel',
+      star_rating: item.star_rating || item.starRating || item.stars || null,
+      city: city || null,
+      country_code: item.country_code || item.countryCode || item.country_iso_code || null,
+      country_name: countryName || null,
+      coordinates: item.coordinates || item.center || item.location || null,
+      _raw: process.env.NODE_ENV === 'production' ? undefined : item
+    };
+  }
+
+  // Handle regions/destinations (existing logic)
   const regionId = item.region_id || item.regionId || item.id || item.regionID;
 
   if (!regionId) {
     console.warn('⚠️ Skipping result without region_id:', JSON.stringify(item).substring(0, 200));
     return null;
   }
-
-  const type = (item.type || item.object_type || 'location').toLowerCase();
 
   let label = item.label || item.name || item.fullName || item.full_name || 'Unknown';
   const countryName = item.country_name || item.countryName || item.country;
@@ -57,20 +93,28 @@ function normalizeResult(item) {
 function filterAndSortResults(results, limit = 10) {
   if (!results || results.length === 0) return [];
 
+  const hotels = [];
   const prioritized = [];
   const other = [];
 
   results.forEach(r => {
     if (!r) return;
-    if (PREFERRED_TYPES.includes(r.type)) {
+    
+    // Separate hotels for special handling
+    if (r.type === 'hotel') {
+      hotels.push(r);
+    } else if (PREFERRED_TYPES.includes(r.type)) {
       prioritized.push(r);
     } else {
       other.push(r);
     }
   });
 
-  const sorted = [...prioritized, ...other].slice(0, limit);
-  console.log(`🔍 Filtered ${results.length} results → ${sorted.length} (${prioritized.length} prioritized, ${other.length} other)`);
+  // Prioritize hotels first, then regions, then others
+  // Hotels are most relevant for direct hotel searches
+  const sorted = [...hotels, ...prioritized, ...other].slice(0, limit);
+  
+  console.log(`🔍 Filtered ${results.length} results → ${sorted.length} (${hotels.length} hotels, ${prioritized.length} regions, ${other.length} other)`);
 
   return sorted;
 }
@@ -167,11 +211,36 @@ export async function searchDestinations(query, locale = 'en', limit = 10) {
       timeout: 5000
     });
 
-    const rawResults = response.data?.regions || response.data || [];
+    // Public API may return hotels in different structure
+    // Check for both regions array and hotels array, or combined array
+    let rawResults = [];
+    
+    if (Array.isArray(response.data)) {
+      rawResults = response.data;
+    } else if (response.data?.regions) {
+      rawResults = response.data.regions;
+      // Also check for hotels in the response
+      if (response.data.hotels && Array.isArray(response.data.hotels)) {
+        rawResults = [...rawResults, ...response.data.hotels];
+      }
+    } else if (response.data?.hotels) {
+      rawResults = response.data.hotels;
+    } else {
+      rawResults = [];
+    }
+    
     console.log(`🔍 RateHawk returned ${rawResults.length} results for "${query}"`);
 
     if (rawResults.length > 0 && process.env.NODE_ENV !== 'production') {
       console.log('📊 Sample RateHawk result:', JSON.stringify(rawResults[0], null, 2).substring(0, 500));
+      // Log structure info
+      const sample = rawResults[0];
+      console.log('📊 Result structure:', {
+        hasHotelId: !!(sample.hotel_id || sample.hotelId || sample.id?.startsWith('h-')),
+        hasRegionId: !!(sample.region_id || sample.regionId),
+        type: sample.type || sample.object_type,
+        keys: Object.keys(sample)
+      });
     }
 
     const normalized = rawResults

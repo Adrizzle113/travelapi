@@ -19,10 +19,16 @@ export async function autocompleteDestinations(req, res) {
 
     const result = await searchDestinations(query, locale, parsedLimit);
 
+    // Separate hotels and destinations for better frontend handling
+    const destinations = result.results.filter(r => r.type !== 'hotel');
+    const hotels = result.results.filter(r => r.type === 'hotel');
+
     return res.json({
       status: 'ok',
       data: {
-        destinations: result.results,
+        destinations: destinations,
+        hotels: hotels,
+        results: result.results, // Combined for backward compatibility
         total: result.total,
         query,
         locale

@@ -711,9 +711,30 @@ export async function autocomplete(query, language = 'en') {
     });
 
     if (response.data && response.data.status === 'ok') {
-      const results = response.data.data?.regions || [];
-      console.log(`✅ Autocomplete: ${results.length} results`);
-      return results;
+      const data = response.data.data || {};
+      
+      // Log full response structure for debugging (first time only)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('📊 Multicomplete response structure:', {
+          hasRegions: !!data.regions,
+          hasHotels: !!data.hotels,
+          regionsCount: data.regions?.length || 0,
+          hotelsCount: data.hotels?.length || 0,
+          dataKeys: Object.keys(data)
+        });
+        
+        if (data.hotels && data.hotels.length > 0) {
+          console.log('🏨 Sample hotel structure:', JSON.stringify(data.hotels[0], null, 2).substring(0, 500));
+        }
+      }
+      
+      // Combine regions and hotels into unified results
+      const regions = data.regions || [];
+      const hotels = data.hotels || [];
+      const allResults = [...regions, ...hotels];
+      
+      console.log(`✅ Autocomplete: ${regions.length} regions, ${hotels.length} hotels (${allResults.length} total)`);
+      return allResults;
     }
 
     return [];
