@@ -366,8 +366,8 @@ export async function prebookHotel(bookHash, residency = 'US', language = 'en') 
     });
 
     const response = await apiClient.post('/hotel/prebook/', {
-      hash: bookHash,  // ✅ Changed from matchHash to bookHash
-      residency: residency.toUpperCase(),  // ✅ Added residency (uppercase)
+      hash: bookHash,
+      residency: residency.toUpperCase(),
       language
     }, {
       timeout: TIMEOUTS.prebook
@@ -406,31 +406,57 @@ export async function prebookHotel(bookHash, residency = 'US', language = 'en') 
  * Official Doc: "Retrieve booking form - Required guest fields"
  * 
  * This is STEP 2 of the booking flow (optional but recommended)
+ * 
+ * Input: bookHash (from prebook), partnerOrderId (unique order ID)
+ * Output: order_id, item_id, payment_types, etc.
  */
-export async function getBookingForm(bookHash, language = 'en') {
+export async function getBookingForm(bookHash, partnerOrderId, language = 'en') {
   const endpoint = '/hotel/order/booking/form/';
 
   try {
-    console.log(`📝 ETG getBookingForm: ${bookHash.substring(0, 20)}...`);
+    // Validate required parameters
+    if (!bookHash) {
+      throw new Error('bookHash is required for booking form');
+    }
+    
+    if (!partnerOrderId) {
+      throw new Error('partnerOrderId is required for booking form');
+    }
+
+    console.log(`📝 ETG getBookingForm:`, {
+      hash: bookHash.substring(0, 30) + '...',
+      partner_order_id: partnerOrderId,
+      language
+    });
 
     const response = await apiClient.post('/hotel/order/booking/form/', {
       hash: bookHash,
+      partner_order_id: partnerOrderId,  // ✅ Added required parameter
       language
     }, {
       timeout: TIMEOUTS.default
     });
 
     if (response.data && response.data.status === 'ok') {
-      console.log('✅ Booking form retrieved');
-      return response.data.data;
+      const formData = response.data.data;
+      
+      console.log(`✅ Booking form retrieved - order_id: ${formData.order_id}, item_id: ${formData.item_id}`);
+      
+      return formData;
     }
 
-    throw new Error('Failed to get booking form');
+    throw new Error('Failed to get booking form - API returned non-ok status');
 
   } catch (error) {
     const formattedError = formatAxiosError(error, 'Get booking form');
-    console.error('❌ ETG getBookingForm error:', formattedError.message);
-    throw formattedError;
+    console.error('❌ ETG getBookingForm error:', formattedError);
+    
+    // Re-throw with context
+    const enhancedError = new Error(formattedError.message || 'Failed to get booking form');
+    enhancedError.status = formattedError.status;
+    enhancedError.code = formattedError.code;
+    enhancedError.data = formattedError.data;
+    throw enhancedError;
   }
 }
 
