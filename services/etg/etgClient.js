@@ -348,7 +348,7 @@ export async function getHotelWithRates(hotelId, searchParams) {
  * 
  * This is STEP 1 of the booking flow
  */
-export async function prebookHotel(matchHash, language = 'en') {
+export async function prebookHotel(bookHash, residency = 'US') {
   const endpoint = '/hotel/prebook/';
 
   try {
@@ -359,11 +359,12 @@ export async function prebookHotel(matchHash, language = 'en') {
       await waitForRateLimit(endpoint);
     }
 
-    console.log(`📋 ETG prebook: ${matchHash.substring(0, 20)}...`);
+    console.log(`📋 ETG prebook: ${bookHash.substring(0, 20)}...`);
 
     const response = await apiClient.post('/hotel/prebook/', {
-      hash: matchHash,
-      language
+      hash: bookHash,  // ✅ Changed from matchHash to bookHash
+      language: 'en',
+      residency: residency.toUpperCase()  // ✅ Added residency
     }, {
       timeout: TIMEOUTS.prebook
     });
@@ -373,12 +374,7 @@ export async function prebookHotel(matchHash, language = 'en') {
     if (response.data && response.data.status === 'ok') {
       const prebookData = response.data.data;
       
-      // Extract book_hash
-      if (prebookData.book_hash) {
-        console.log(`✅ Prebook successful. Book hash: ${prebookData.book_hash.substring(0, 20)}...`);
-      } else {
-        console.warn('⚠️ Prebook response missing book_hash');
-      }
+      console.log(`✅ Prebook successful`);
       
       return prebookData;
     }
