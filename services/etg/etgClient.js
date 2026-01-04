@@ -343,12 +343,12 @@ export async function getHotelWithRates(hotelId, searchParams) {
  * Rate Limit: 30 requests/minute
  * Official Doc: "Prebook hotel - Price validation + availability hold"
  * 
- * Input: match_hash (from search results)
- * Output: book_hash (needed for booking.finish)
+ * Input: book_hash (from search results - format: h-...)
+ * Output: booking_hash (needed for booking.finish)
  * 
  * This is STEP 1 of the booking flow
  */
-export async function prebookHotel(bookHash, residency = 'US') {
+export async function prebookHotel(bookHash, residency = 'US', language = 'en') {
   const endpoint = '/hotel/prebook/';
 
   try {
@@ -359,12 +359,16 @@ export async function prebookHotel(bookHash, residency = 'US') {
       await waitForRateLimit(endpoint);
     }
 
-    console.log(`📋 ETG prebook: ${bookHash.substring(0, 20)}...`);
+    console.log(`📋 ETG prebook:`, {
+      hash: bookHash.substring(0, 30) + '...',
+      residency,
+      language
+    });
 
     const response = await apiClient.post('/hotel/prebook/', {
       hash: bookHash,  // ✅ Changed from matchHash to bookHash
-      language: 'en',
-      residency: residency.toUpperCase()  // ✅ Added residency
+      residency: residency.toUpperCase(),  // ✅ Added residency (uppercase)
+      language
     }, {
       timeout: TIMEOUTS.prebook
     });
@@ -379,12 +383,18 @@ export async function prebookHotel(bookHash, residency = 'US') {
       return prebookData;
     }
 
-    throw new Error('Prebook failed');
+    throw new Error('Prebook failed - API returned non-ok status');
 
   } catch (error) {
     const formattedError = formatAxiosError(error, 'Prebook hotel');
-    console.error('❌ ETG prebook error:', formattedError.message);
-    throw formattedError;
+    console.error('❌ ETG prebook error:', formattedError);
+    
+    // Re-throw with more context
+    const enhancedError = new Error(formattedError.message || 'Prebook failed');
+    enhancedError.status = formattedError.status;
+    enhancedError.code = formattedError.code;
+    enhancedError.data = formattedError.data;
+    throw enhancedError;
   }
 }
 
