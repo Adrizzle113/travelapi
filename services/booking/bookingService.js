@@ -285,11 +285,13 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
     // Record successful request
     recordRequest(endpoint);
 
+    // ✅ Log the full response for debugging
+    console.log('📥 ETG API response:', JSON.stringify(response.data, null, 2));
+
     if (response.data && response.data.status === 'ok') {
-      console.log(`✅ Order form retrieved successfully`);
       const formData = response.data.data;
+      console.log(`✅ Order form retrieved successfully`);
       
-      // Log order IDs if present (for debugging)
       if (formData.order_id) {
         console.log(`   Order ID: ${formData.order_id}`);
       }
@@ -297,24 +299,27 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
         console.log(`   Item ID: ${formData.item_id}`);
       }
       
-      // Log available payment types for debugging
-      if (formData.payment_types || formData.payment_types_available) {
-        const paymentTypes = formData.payment_types || formData.payment_types_available || [];
-        console.log(`   Available payment types:`, paymentTypes.map(pt => pt.type || pt).join(', '));
-      }
-      
       return formData;
     }
 
-    throw new Error(response.data?.error?.message || 'Get order form failed');
+    // ✅ Better error message with actual response
+    const errorMsg = response.data?.error || response.data?.message || 'Get order form failed';
+    console.error('⚠️ ETG returned non-ok status:', JSON.stringify(response.data, null, 2));
+    throw new Error(errorMsg);
 
   } catch (error) {
     const formattedError = formatAxiosError(error, 'Get order form');
     console.error('❌ ETG getOrderForm error:', formattedError.message);
+    
+    // ✅ Log full error details
     if (error.response) {
       console.error('   Status:', error.response.status);
-      console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));
+      console.error('   Full response data:', JSON.stringify(error.response.data, null, 2));
+      console.error('   Request payload was:', JSON.stringify(payload, null, 2));
+    } else if (error.message) {
+      console.error('   Error message:', error.message);
     }
+    
     throw formattedError;
   }
 }
