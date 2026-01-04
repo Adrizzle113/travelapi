@@ -269,7 +269,7 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
     }
 
     const payload = {
-      hash: book_hash,    // ✅ CRITICAL: Changed from 'book_hash' to 'hash'
+      book_hash,    
       partner_order_id,
       language,
       user_ip
