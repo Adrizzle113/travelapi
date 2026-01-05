@@ -67,10 +67,11 @@ async function getFromCache() {
       return null;
     }
 
-    // Check if cache is still valid
-    const cacheAge = Date.now() - new Date(cached.cached_at).getTime();
-    if (cacheAge > FILTER_VALUES_CACHE_TTL) {
-      console.log(`⚠️ Filter values cache expired (age: ${Math.floor(cacheAge / (1000 * 60 * 60))}h)`);
+    // Check if cache is still valid using expires_at
+    const now = new Date();
+    if (new Date(cached.expires_at) < now) {
+      const cacheAge = Math.floor((now - new Date(cached.cached_at).getTime()) / (1000 * 60 * 60));
+      console.log(`⚠️ Filter values cache expired (age: ${cacheAge}h)`);
       return null;
     }
 
@@ -91,11 +92,15 @@ async function saveToCache(filterValues) {
     // Delete old cache entries (keep only the latest)
     await prisma.filterValuesCache.deleteMany({});
 
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + FILTER_VALUES_CACHE_TTL);
+
     // Save new cache entry
     await prisma.filterValuesCache.create({
       data: {
         filter_values: filterValues,
-        cached_at: new Date()
+        cached_at: now,
+        expires_at: expiresAt
       }
     });
 

@@ -205,10 +205,9 @@ model FilterValuesCache {
   id            String   @id @default(uuid()) @db.Uuid
   filter_values Json     @db.JsonB
   cached_at     DateTime @default(now()) @db.Timestamp(6)
+  expires_at    DateTime @db.Timestamp(6)
 
   @@map("filter_values_cache")
-  @@index([poi_type], name: "idx_poi_type")
-  @@map("hotel_pois")
 }
 
 model RegionData {
