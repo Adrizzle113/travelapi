@@ -374,6 +374,10 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
     
     // Validate and normalize payment_type
     // ETG API expects specific PaymentType enum values: "deposit", "now", "hotel"
+    // IMPORTANT: The payment_type must match one of the "type" values from the 
+    // payment_types array returned by the /hotel/order/booking/form/ endpoint.
+    // Even if a payment type appears in the order form response, it may not be valid
+    // for the specific order (e.g., test hotels may only support "now").
     // Normalize to lowercase and validate
     const normalizedPaymentType = (payment_type || '').toLowerCase().trim();
     const validPaymentTypes = ['deposit', 'now', 'hotel'];

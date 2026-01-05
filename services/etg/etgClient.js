@@ -2,13 +2,27 @@ import axios from 'axios';
 
 // ETG API Configuration
 const BASE_URL = 'https://api.worldota.net/api/b2b/v3';
+const CONTENT_API_BASE_URL = 'https://api.worldota.net/api/content/v1';
 
 const partnerId = process.env.ETG_PARTNER_ID || '11606';
 const password = process.env.ETG_API_KEY || 'ff9702bb-ba93-4996-a31e-547983c51530';
 
-// Create axios instance with authentication
+// Create axios instance with authentication for B2B API
 const apiClient = axios.create({
   baseURL: BASE_URL,
+  auth: {
+    username: partnerId,
+    password: password
+  },
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  }
+});
+
+// Create axios instance for Content API (same auth)
+const contentApiClient = axios.create({
+  baseURL: CONTENT_API_BASE_URL,
   auth: {
     username: partnerId,
     password: password
@@ -31,6 +45,7 @@ const TIMEOUTS = {
 // Rate limiting configuration based on ETG limits
 const RATE_LIMITS = {
   '/search/serp/region/': { requests: 10, window: 60000 },  // 10/min
+  '/search/serp/hotels/': { requests: 150, window: 60000 }, // 150/min (highest limit)
   '/search/hp/': { requests: 10, window: 60000 },           // 10/min
   '/hotel/info/': { requests: 30, window: 60000 },          // 30/min
   '/hotel/prebook/': { requests: 30, window: 60000 },       // 30/min
@@ -253,6 +268,115 @@ export async function searchHotelsByRegion(searchParams) {
 }
 
 /**
+ * Search hotels by hotel IDs with live rates
+ * Endpoint: /search/serp/hotels/
+ * Method: POST
+ * Rate Limit: 150 requests/minute (highest limit)
+ * 
+ * This endpoint is for searching multiple specific hotels by their IDs (up to 300 hotels per request).
+ * It's more efficient than calling /search/hp/ multiple times when you have a list of hotel IDs.
+ * 
+ * Request body requires:
+ * - ids (array of strings/integers) - Array of hotel IDs (max 300)
+ * - checkin, checkout (dates)
+ * - guests (array)
+ * - residency (country code, uppercase)
+ * - language, currency
+ * 
+ * @param {Object} searchParams - Search parameters
+ * @param {Array<string|number>} searchParams.hotelIds - Array of hotel IDs (required, max 300)
+ * @param {string} searchParams.checkin - Check-in date (YYYY-MM-DD)
+ * @param {string} searchParams.checkout - Check-out date (YYYY-MM-DD)
+ * @param {Array} searchParams.guests - Guest configuration array
+ * @param {string} searchParams.residency - Country code (default: 'US')
+ * @param {string} searchParams.language - Language code (default: 'en')
+ * @param {string} searchParams.currency - Currency code (default: 'USD')
+ * @returns {Promise<Object>} - Search results with hotels array
+ */
+export async function searchHotelsByHotelIds(searchParams) {
+  const endpoint = '/search/serp/hotels/';
+
+  try {
+    // Check rate limit
+    const rateLimitCheck = checkRateLimit(endpoint);
+    if (!rateLimitCheck.allowed) {
+      console.log(`⏳ Rate limit check: ${rateLimitCheck.remaining} remaining, waiting ${rateLimitCheck.waitTime}s...`);
+      await waitForRateLimit(endpoint);
+    }
+
+    const {
+      hotelIds,
+      checkin,
+      checkout,
+      guests = [{ adults: 2, children: [] }],
+      residency = 'US',
+      language = 'en',
+      currency = 'USD'
+    } = searchParams;
+
+    // Validate hotel IDs
+    if (!hotelIds || !Array.isArray(hotelIds) || hotelIds.length === 0) {
+      throw new Error('hotelIds array is required and must not be empty');
+    }
+
+    if (hotelIds.length > 300) {
+      throw new Error('Maximum 300 hotel IDs allowed per request');
+    }
+
+    // Normalize hotel IDs to strings (ETG API accepts both strings and integers)
+    const normalizedIds = hotelIds.map(id => String(id));
+
+    console.log(`🔍 ETG searchHotelsByHotelIds: ${normalizedIds.length} hotels, checkin=${checkin}, checkout=${checkout}`);
+
+    const requestBody = {
+      ids: normalizedIds,  // Array of hotel IDs
+      checkin,
+      checkout,
+      residency: residency.toUpperCase(),  // Must be uppercase country code
+      language,
+      guests,
+      currency
+    };
+
+    const response = await apiClient.post('/search/serp/hotels/', requestBody, {
+      timeout: TIMEOUTS.search
+    });
+
+    recordRequest(endpoint);
+
+    if (response.data && response.data.status === 'ok') {
+      const hotels = response.data.data?.hotels || [];
+      
+      console.log(`✅ ETG searchHotelsByHotelIds: ${hotels.length} hotels found`);
+      
+      // Extract match_hash from each hotel
+      hotels.forEach(hotel => {
+        if (hotel.rates && hotel.rates.length > 0) {
+          const firstRate = hotel.rates[0];
+          if (firstRate.match_hash) {
+            hotel.match_hash = firstRate.match_hash;
+            console.log(`📋 Match hash for ${hotel.id}: ${firstRate.match_hash.substring(0, 20)}...`);
+          }
+        }
+      });
+      
+      return {
+        hotels,
+        search_id: response.data.data?.search_id,
+        total_hotels: hotels.length
+      };
+    }
+
+    throw new Error('Search failed');
+
+  } catch (error) {
+    const formattedError = formatAxiosError(error, 'Search hotels by hotel IDs');
+    console.error('❌ ETG searchHotelsByHotelIds error:', formattedError.message);
+    throw formattedError;
+  }
+}
+
+/**
  * Get hotel details with live rates (single hotel with availability)
  * Endpoint: /search/hp/
  * Method: POST
@@ -260,6 +384,7 @@ export async function searchHotelsByRegion(searchParams) {
  * 
  * This endpoint is for hotel ID-based searches (uses ids parameter).
  * For region-based searches, use /search/serp/region/ with region_id parameter.
+ * For multiple hotel IDs (up to 300), use /search/serp/hotels/ instead.
  * 
  * This endpoint returns:
  * - Hotel static info (name, address, amenities, photos)
@@ -694,6 +819,52 @@ export async function cancelOrder(orderId, language = 'en') {
 }
 
 /**
+ * Get filter values for hotel search filtering
+ * Endpoint: /filter_values
+ * Method: GET
+ * Content API endpoint - returns available filter options
+ * 
+ * This endpoint provides metadata for:
+ * - Language codes and descriptions
+ * - Country codes and names
+ * - SERP filters (amenities like has_breakfast, has_pool, etc.)
+ * - Star ratings (0-5)
+ * - Hotel kinds (Hotel, Resort, Apartment, etc.)
+ * 
+ * Note: Filter values change infrequently, so this should be cached (recommended: 24 hours)
+ * 
+ * @returns {Promise<Object>} - Filter values object with language, country, serp_filter, star_rating, kind
+ */
+export async function getFilterValues() {
+  try {
+    console.log('🔍 ETG getFilterValues: Fetching filter values from Content API');
+
+    const response = await contentApiClient.get('/filter_values', {
+      timeout: TIMEOUTS.default
+    });
+
+    if (response.data && response.data.status === 'ok') {
+      const filterValues = response.data.data;
+      console.log(`✅ ETG getFilterValues: Retrieved filter values`);
+      console.log(`   - Languages: ${filterValues.language?.length || 0}`);
+      console.log(`   - Countries: ${filterValues.country?.length || 0}`);
+      console.log(`   - SERP Filters: ${filterValues.serp_filter?.length || 0}`);
+      console.log(`   - Star Ratings: ${filterValues.star_rating?.length || 0}`);
+      console.log(`   - Hotel Kinds: ${filterValues.kind?.length || 0}`);
+      
+      return filterValues;
+    }
+
+    throw new Error('Failed to get filter values');
+
+  } catch (error) {
+    const formattedError = formatAxiosError(error, 'Get filter values');
+    console.error('❌ ETG getFilterValues error:', formattedError.message);
+    throw formattedError;
+  }
+}
+
+/**
  * Autocomplete search (destinations, hotels, etc.)
  * Endpoint: /search/multicomplete/
  * Method: POST
@@ -765,6 +936,7 @@ export function getRateLimitStatus() {
 export default {
   getHotelInformation,
   searchHotelsByRegion,
+  searchHotelsByHotelIds,
   getHotelWithRates,
   prebookHotel,
   getBookingForm,
@@ -773,5 +945,6 @@ export default {
   getOrderInfo,
   cancelOrder,
   autocomplete,
+  getFilterValues,
   getRateLimitStatus
 };

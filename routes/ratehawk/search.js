@@ -7,6 +7,7 @@
 
 import express from "express";
 import { executeSearch, paginateSearch } from "../../services/search/searchService.js";
+import { searchHotelsByHotelIds } from "../../services/etg/etgClient.js";
 import { validateRegionId, validateSearchParams } from "../../middleware/validation.js";
 import { handleApiError } from "../../utils/errorHandler.js";
 import { PAGINATION } from "../../config/constants.js";
@@ -296,6 +297,119 @@ router.post("/search", validateRegionId, validateSearchParams, async (req, res) 
         errorType: error.name || "Unknown",
         message: error.message,
       },
+    });
+  }
+});
+
+// ================================
+// SEARCH BY HOTEL IDs - POST
+// ================================
+
+/**
+ * POST /api/ratehawk/search/hotels
+ * Search multiple hotels by their IDs (up to 300 hotels per request)
+ * Uses ETG API /search/serp/hotels/ endpoint (150 requests/minute limit)
+ * 
+ * Request body:
+ * - hotel_ids (array, required) - Array of hotel IDs (max 300)
+ * - checkin (string, required) - Check-in date (YYYY-MM-DD)
+ * - checkout (string, required) - Check-out date (YYYY-MM-DD)
+ * - guests (array, optional) - Guest configuration (default: [{ adults: 2, children: [] }])
+ * - residency (string, optional) - Country code (default: 'us')
+ * - currency (string, optional) - Currency code (default: 'USD')
+ * - language (string, optional) - Language code (default: 'en')
+ */
+router.post("/search/hotels", async (req, res) => {
+  const startTime = Date.now();
+  const {
+    hotel_ids,
+    hotelIds,
+    checkin,
+    checkout,
+    guests = [{ adults: 2, children: [] }],
+    residency = "us",
+    currency = "USD",
+    language = "en"
+  } = req.body;
+
+  // Normalize residency parameter (e.g., "en-us" → "us")
+  const normalizedResidency = normalizeResidency(residency);
+
+  // Support both hotel_ids and hotelIds parameter names
+  const finalHotelIds = hotel_ids || hotelIds;
+
+  console.log("🔍 === SEARCH BY HOTEL IDs REQUEST ===");
+  console.log(`🏨 Hotel IDs: ${finalHotelIds?.length || 0} hotels`);
+  console.log(`📅 Check-in: ${checkin}`);
+  console.log(`📅 Check-out: ${checkout}`);
+  console.log(`👥 Guests: ${JSON.stringify(guests)}`);
+  console.log(`🌍 Residency: ${residency} → ${normalizedResidency} (normalized)`);
+  console.log(`💰 Currency: ${currency}`);
+
+  // Validation
+  if (!finalHotelIds || !Array.isArray(finalHotelIds) || finalHotelIds.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: "hotel_ids or hotelIds array is required and must not be empty",
+      hotels: [],
+      total: 0
+    });
+  }
+
+  if (finalHotelIds.length > 300) {
+    return res.status(400).json({
+      success: false,
+      error: "Maximum 300 hotel IDs allowed per request",
+      hotels: [],
+      total: 0
+    });
+  }
+
+  if (!checkin || !checkout) {
+    return res.status(400).json({
+      success: false,
+      error: "checkin and checkout dates are required",
+      hotels: [],
+      total: 0
+    });
+  }
+
+  try {
+    const searchResult = await searchHotelsByHotelIds({
+      hotelIds: finalHotelIds,
+      checkin,
+      checkout,
+      guests,
+      residency: normalizedResidency,
+      currency,
+      language
+    });
+
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      hotels: searchResult.hotels || [],
+      total: searchResult.total_hotels || searchResult.hotels?.length || 0,
+      search_id: searchResult.search_id,
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error("❌ Search by hotel IDs error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: {
+        message: error.message || "Failed to search hotels",
+        code: error.code || "SEARCH_ERROR"
+      },
+      hotels: [],
+      total: 0,
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`
     });
   }
 });
