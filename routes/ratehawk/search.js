@@ -21,36 +21,53 @@ fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{metho
 // HOTEL SEARCH
 // ================================
 
+/**
+ * POST /api/ratehawk/search
+ * Legacy search endpoint - now uses WorldOTA API (no session required)
+ * Accepts destination as region_id (number) or region name (string)
+ */
 router.post("/search", async (req, res) => {
   const startTime = Date.now();
   const {
-    userId,
+    userId, // Optional - kept for backward compatibility
     destination,
+    destId, // Alternative: direct region_id
     checkin,
     checkout,
     guests,
-    residency = "en-us",
+    residency = "us",
     currency = "USD",
     page = 1,
     filters = {},
   } = req.body;
 
-  console.log("🔍 === RATEHAWK SEARCH REQUEST ===");
-  console.log(`👤 User ID: ${userId}`);
+  console.log("🔍 === LEGACY SEARCH REQUEST (WorldOTA API) ===");
+  console.log(`👤 User ID: ${userId || "N/A (not required)"}`);
   console.log(`🗺️ Destination: ${destination}`);
+  console.log(`🆔 Dest ID: ${destId || "N/A"}`);
   console.log(`📅 Check-in: ${checkin}`);
   console.log(`📅 Check-out: ${checkout}`);
   console.log(`👥 Guests: ${JSON.stringify(guests)}`);
   console.log(`🌍 Residency: ${residency}`);
   console.log(`💰 Currency: ${currency}`);
-  console.log(`📄 Page: ${page}`);
 
-  // Validation
-  if (!userId || !destination || !checkin || !checkout || !guests) {
+  // Validation - userId is now optional
+  if (!destination && !destId) {
     console.log("❌ Missing required parameters");
     return res.status(400).json({
       success: false,
-      error: "Missing required fields: userId, destination, checkin, checkout, guests",
+      error: "Missing required fields: destination or destId, checkin, checkout, guests",
+      hotels: [],
+      totalHotels: 0,
+      availableHotels: 0,
+    });
+  }
+
+  if (!checkin || !checkout || !guests) {
+    console.log("❌ Missing required parameters");
+    return res.status(400).json({
+      success: false,
+      error: "Missing required fields: checkin, checkout, guests",
       hotels: [],
       totalHotels: 0,
       availableHotels: 0,
@@ -58,59 +75,74 @@ router.post("/search", async (req, res) => {
   }
 
   try {
-    // Get user session
-    const userSession = global.userSessions.get(userId);
-    if (!userSession) {
-      console.log("❌ No session found for user:", userId);
-      return res.status(401).json({
-        success: false,
-        error: "No RateHawk session found. Please login first.",
-        hotels: [],
-        totalHotels: 0,
-        availableHotels: 0,
-      });
+    let regionId = destId;
+
+    // If no destId provided, try to parse destination or look it up
+    if (!regionId) {
+      // Try to parse destination as region_id (if it's numeric)
+      const numericDest = parseInt(destination);
+      if (!isNaN(numericDest)) {
+        regionId = numericDest;
+        console.log(`✅ Parsed destination as region_id: ${regionId}`);
+      } else {
+        // Use multicomplete to find region_id from destination name
+        console.log(`🔍 Looking up region_id for destination: "${destination}"`);
+        const multicompleteResult = await worldotaService.multicomplete({
+          query: destination,
+          language: "en",
+        });
+
+        if (multicompleteResult.success && multicompleteResult.data?.regions?.length > 0) {
+          // Use the first matching region
+          regionId = multicompleteResult.data.regions[0].id;
+          console.log(`✅ Found region_id: ${regionId} for "${destination}"`);
+        } else {
+          console.log(`❌ Could not find region_id for "${destination}"`);
+          return res.status(400).json({
+            success: false,
+            error: `Could not find region for destination: ${destination}`,
+            hotels: [],
+            totalHotels: 0,
+            availableHotels: 0,
+            searchDuration: `${Date.now() - startTime}ms`,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
     }
 
-    // Validate session
-    if (!validateSession(userSession)) {
-      console.log("❌ Invalid/expired session for user:", userId);
-      global.userSessions.delete(userId);
-      return res.status(401).json({
-        success: false,
-        error: "RateHawk session expired. Please login again.",
-        hotels: [],
-        totalHotels: 0,
-        availableHotels: 0,
-      });
-    }
+    // Normalize residency format (e.g., "en-us" -> "us")
+    const normalizedResidency = residency.includes("-") 
+      ? residency.split("-")[1] 
+      : residency;
 
-    // Update last used timestamp
-    userSession.lastUsed = new Date();
-    global.userSessions.set(userId, userSession);
-
-    console.log(`✅ Using valid session for search`);
-
-    // Perform search
-    const searchResult = await searchHotels({
-      userSession,
-      destination,
+    // Perform search using WorldOTA API
+    const searchResult = await worldotaService.searchHotels({
+      regionId: regionId.toString(),
       checkin,
       checkout,
-      guests,
-      residency,
+      guests: Array.isArray(guests) ? guests : [{ adults: guests.adults || 2, children: guests.children || [] }],
+      residency: normalizedResidency,
       currency,
-      page,
-      filters,
+      language: "en",
     });
 
     const duration = Date.now() - startTime;
     console.log(`⏱️ Search completed in ${duration}ms`);
 
-    // Add duration to result
-    searchResult.searchDuration = `${duration}ms`;
-    searchResult.timestamp = new Date().toISOString();
+    // Transform response to match expected format
+    const response = {
+      success: true,
+      hotels: searchResult.hotels || [],
+      totalHotels: searchResult.totalHotels || 0,
+      availableHotels: searchResult.availableHotels || 0,
+      searchDuration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+      regionId: regionId,
+      destination: destination,
+    };
 
-    res.json(searchResult);
+    res.json(response);
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Hotel search error:", error);
@@ -126,6 +158,7 @@ router.post("/search", async (req, res) => {
       debug: {
         userId: userId,
         destination: destination,
+        destId: destId,
         errorType: error.name || "Unknown",
       },
     });

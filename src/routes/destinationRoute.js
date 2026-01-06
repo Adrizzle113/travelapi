@@ -6,6 +6,6 @@ import { rateLimiter, strictRateLimiter } from "../../middleware/rateLimiter.js"
 const DestinationRoute = express.Router();
 
 DestinationRoute.get("/autocomplete", strictRateLimiter, autocompleteDestinations);
-DestinationRoute.post("/", strictRateLimiter, destinationController);
+DestinationRoute.post("/destination", strictRateLimiter, destinationController);
 
 export default DestinationRoute;
