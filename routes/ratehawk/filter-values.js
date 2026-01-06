@@ -42,29 +42,11 @@ try {
 router.get("/filter-values", async (req, res) => {
   const startTime = Date.now();
   
-  // #region agent log
-  if (typeof fetch !== 'undefined') {
-    fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'filter-values.js:20',message:'Filter values route entry',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  }
-  // #endregion
-  
   console.log("🔍 === FILTER VALUES REQUEST ===");
   console.log(`🕒 Timestamp: ${new Date().toISOString()}`);
 
   try {
-    // #region agent log
-    if (typeof fetch !== 'undefined') {
-      fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'filter-values.js:27',message:'Calling getFilterValues',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    }
-    // #endregion
-    
     const filterValuesResult = await worldotaService.getFilterValues();
-    
-    // #region agent log
-    if (typeof fetch !== 'undefined') {
-      fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'filter-values.js:32',message:'getFilterValues returned',data:{success:filterValuesResult.success,hasData:!!filterValuesResult.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    }
-    // #endregion
     
     const duration = Date.now() - startTime;
     
@@ -79,23 +61,11 @@ router.get("/filter-values", async (req, res) => {
       timestamp: new Date().toISOString(),
     };
     
-    // #region agent log
-    if (typeof fetch !== 'undefined') {
-      fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'filter-values.js:45',message:'Sending success response',data:{statusCode:200},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    }
-    // #endregion
-    
     return res.json(response);
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Filter values error:", error.message);
     console.error("💥 Filter values error stack:", error.stack);
-    
-    // #region agent log
-    if (typeof fetch !== 'undefined') {
-      fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'filter-values.js:55',message:'Filter values catch block',data:{errorMessage:error.message,errorName:error.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    }
-    // #endregion
     
     // Return default values instead of 500 error
     const defaultResponse = {
@@ -114,15 +84,8 @@ router.get("/filter-values", async (req, res) => {
       timestamp: new Date().toISOString(),
     };
     
-    // #region agent log
-    if (typeof fetch !== 'undefined') {
-      fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'filter-values.js:75',message:'Sending default response',data:{statusCode:200},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    }
-    // #endregion
-    
     return res.json(defaultResponse);
   }
 });
 
 export default router;
-

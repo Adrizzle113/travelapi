@@ -1,0 +1,25 @@
+// Add this to your existing schema.prisma
+
+model HotelDumpData {
+  id                  Int      @id @default(autoincrement())
+  hotelId             String   @unique @map("hotel_id")
+  name                String
+  address             String
+  city                String
+  country             String
+  latitude            Float
+  longitude           Float
+  starRating          Int      @map("star_rating")
+  kind                String
+  currency            String
+  checkInTime         String   @map("check_in_time")
+  checkOutTime        String   @map("check_out_time")
+  metapolicyStructId  Int?     @map("metapolicy_struct_id")
+  amenities           String
+  factData            String   @map("fact_data")
+  hotelChain          String?  @map("hotel_chain")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("hotel_dump_data")
+}

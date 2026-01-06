@@ -1,8 +1,10 @@
 import express from "express";
-const BookingFormCreationRoute = express.Router();
 import { createBookingForm, getCountries } from "../controllers/createBookingForm.js";
-getCountries
-BookingFormCreationRoute.post("/create-booking-form", createBookingForm);
-BookingFormCreationRoute.get("/countries", getCountries)
+import { validateBookingForm } from "../../middleware/validation.js";
+
+const BookingFormCreationRoute = express.Router();
+
+BookingFormCreationRoute.post("/create-booking-form", validateBookingForm, createBookingForm);
+BookingFormCreationRoute.get("/countries", getCountries);
 
 export { BookingFormCreationRoute };

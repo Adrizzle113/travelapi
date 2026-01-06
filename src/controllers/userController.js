@@ -97,10 +97,9 @@ export const createUser = async (req, res) => {
 
     const otp = generateOTP();
     console.log("🚀 ~ createUser ~ otp:", otp, "type:", typeof otp);
-    const email_Verification = "unverified";
+    const email_verification = "unverified";
     const status = "pending";
 
-    // Clean and prepare user data for database insertion
     const cleanUserData = {
       email: userData.email,
       first_name: userData.first_name || null,
@@ -113,9 +112,9 @@ export const createUser = async (req, res) => {
       actual_address_matches: userData.actual_address_matches !== undefined ? userData.actual_address_matches : true,
       itn: userData.itn || null,
       logo_url: userData.logo_url || null,
-      dummyEmail: dummyEmail,
+      dummy_email: dummyEmail,
       status: status,
-      email_Verification: email_Verification,
+      email_verification: email_verification,
       otp: otp
     };
 
@@ -161,7 +160,7 @@ export const emailVerification = async (req, res) => {
       storedOTP: user.otp,
       receivedOTP: otp,
       status: user.status,
-      email_Verification: user.email_Verification
+      email_verification: user.email_verification
     });
 
     if (user.otp == otp) {
@@ -232,7 +231,7 @@ export const getUserStatus = async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         status: user.status,
-        email_Verification: user.email_Verification,
+        email_verification: user.email_verification,
         created_at: user.created_at
       }
     });

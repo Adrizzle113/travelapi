@@ -97,3 +97,12 @@ Thumbs.db
 # Temporary files
 temp/
 tmp/
+
+# Dump files (too large for git)
+dumps/
+*.json.zst
+*.json.gz
+
+# Test and import scripts (optional - uncomment if you don't want to track these)
+# scripts/imports/import-*.js
+# scripts/dumps/

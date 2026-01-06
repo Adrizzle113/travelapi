@@ -1,134 +1,98 @@
-import sqlite3 from 'sqlite3';
+import { supabase } from './supabaseClient.js';
 
-let db;
+const initializeDatabase = async () => {
+  try {
+    console.log('🗄️ Initializing Supabase database connection...');
 
-const initializeDatabase = () => {
-  return new Promise((resolve, reject) => {
-    console.log('🗄️ Initializing SQLite database...');
-    const sqlite = sqlite3.verbose();
-    db = new sqlite.Database('users.db', (err) => {
-      if (err) {
-        console.error('❌ Error opening database:', err.message);
-        reject(err);
-      } else {
-        console.log('✅ Connected to SQLite database');
+    const { data, error } = await supabase
+      .from('users')
+      .select('count')
+      .limit(1);
 
-        // Create users table if it doesn't exist
-        db.run(`
-          CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            last_login DATETIME,
-            ratehawk_email TEXT,
-            status TEXT DEFAULT 'active'
-          )
-        `, (err) => {
-          if (err) {
-            console.error('❌ Error creating users table:', err.message);
-            reject(err);
-          } else {
-            console.log('✅ Users table ready');
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
 
-            // Create auth logs table for debugging
-            db.run(`
-              CREATE TABLE IF NOT EXISTS auth_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                email TEXT NOT NULL,
-                success INTEGER NOT NULL,
-                error_message TEXT,
-                duration INTEGER,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                session_id TEXT,
-                final_url TEXT
-              )
-            `, (err) => {
-              if (err) {
-                console.error('❌ Error creating auth_logs table:', err.message);
-                reject(err);
-              } else {
-                console.log('✅ Auth logs table ready');
-                resolve();
-              }
-            });
-          }
-        });
-      }
-    });
-  });
+    console.log('✅ Connected to Supabase database');
+    console.log('✅ Users table ready');
+    console.log('✅ Auth logs table ready');
+
+    return true;
+  } catch (err) {
+    console.error('❌ Error connecting to database:', err.message);
+    throw err;
+  }
 };
 
 const getDatabase = () => {
-  if (!db) {
-    throw new Error('Database not initialized. Call initializeDatabase() first.');
-  }
-  return db;
+  return supabase;
 };
 
-// Helper function to log authentication attempts
-const logAuthAttempt = (userId, email, result, duration) => {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase();
-    const timestamp = new Date().toISOString();
-
+const logAuthAttempt = async (userId, email, result, duration) => {
+  try {
     const logEntry = {
-      timestamp,
-      userId,
+      user_id: userId,
       email,
-      success: result.success ? 1 : 0,
-      error: result.error || null,
+      success: result.success || false,
+      error_message: result.error || null,
       duration: duration || null,
-      sessionId: result.sessionId || null,
-      finalUrl: result.loginUrl || result.finalUrl || null
+      session_id: result.sessionId || null,
+      final_url: result.loginUrl || result.finalUrl || null,
+      timestamp: new Date().toISOString()
     };
 
     console.log('📋 AUTH LOG:', JSON.stringify(logEntry, null, 2));
 
-    db.run(`
-      INSERT INTO auth_logs (user_id, email, success, error_message, duration, session_id, final_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [
-      logEntry.userId,
-      logEntry.email,
-      logEntry.success,
-      logEntry.error,
-      logEntry.duration,
-      logEntry.sessionId,
-      logEntry.finalUrl
-    ], function (err) {
-      if (err) {
-        console.error('❌ Error logging auth attempt:', err.message);
-        reject(err);
-      } else {
-        resolve(logEntry);
-      }
-    });
-  });
+    const { data, error } = await supabase
+      .from('auth_logs')
+      .insert([logEntry])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Error logging auth attempt:', error.message);
+      throw error;
+    }
+
+    return data;
+  } catch (err) {
+    console.error('❌ Error in logAuthAttempt:', err.message);
+    throw err;
+  }
 };
 
-// Helper function to get auth statistics
-const getAuthStats = () => {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase();
+const getAuthStats = async () => {
+  try {
+    const { data, error } = await supabase.rpc('get_auth_stats');
 
-    db.all(`
-      SELECT 
-        COUNT(*) as total_attempts,
-        SUM(success) as successful_attempts,
-        AVG(duration) as avg_duration,
-        COUNT(DISTINCT email) as unique_users,
-        COUNT(CASE WHEN timestamp > datetime('now', '-24 hours') THEN 1 END) as attempts_24h
-      FROM auth_logs
-    `, (err, rows) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(rows[0]);
-      }
-    });
-  });
+    if (error) {
+      console.error('Stats query error:', error);
+      const { data: logs, error: logsError } = await supabase
+        .from('auth_logs')
+        .select('*');
+
+      if (logsError) throw logsError;
+
+      const stats = {
+        total_attempts: logs.length,
+        successful_attempts: logs.filter(log => log.success).length,
+        avg_duration: logs.reduce((sum, log) => sum + (log.duration || 0), 0) / logs.length || 0,
+        unique_users: new Set(logs.map(log => log.email)).size,
+        attempts_24h: logs.filter(log => {
+          const logTime = new Date(log.timestamp);
+          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          return logTime > dayAgo;
+        }).length
+      };
+
+      return stats;
+    }
+
+    return data;
+  } catch (err) {
+    console.error('Error getting auth stats:', err.message);
+    throw err;
+  }
 };
 
 export {

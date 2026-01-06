@@ -1,0 +1,258 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model DestinationCache {
+  id                String   @id @default(uuid()) @db.Uuid
+  destination_name  String   @unique @db.VarChar(255)
+  region_id         Int
+  region_name       String?  @db.VarChar(255)
+  last_verified     DateTime @default(now()) @db.Timestamp(6)
+  created_at        DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([destination_name], name: "idx_destination_name")
+  @@map("destination_cache")
+}
+
+model HotelStaticCache {
+  id           String   @id @default(uuid()) @db.Uuid
+  hotel_id     String   @db.VarChar(255)
+  language     String   @default("en") @db.VarChar(10)
+  name         String?  @db.VarChar(500)
+  address      String?  @db.Text
+  city         String?  @db.VarChar(255)
+  country      String?  @db.VarChar(100)
+  star_rating  Int?     @db.SmallInt
+  images       Json?    @db.JsonB
+  amenities    Json?    @db.JsonB
+  description  String?  @db.Text
+  coordinates  Json?    @db.JsonB
+  raw_data     Json?    @db.JsonB
+  cached_at    DateTime @default(now()) @db.Timestamp(6)
+  expires_at   DateTime @db.Timestamp(6)
+
+  @@unique([hotel_id, language], name: "hotel_id_language")
+  @@index([hotel_id], name: "idx_hotel_id")
+  @@index([expires_at], name: "idx_expires_at")
+  @@map("hotel_static_cache")
+}
+
+model SearchCache {
+  id                String   @id @default(uuid()) @db.Uuid
+  search_signature  String   @unique @db.VarChar(64)
+  search_params     Json     @db.JsonB
+  region_id         Int
+  total_hotels      Int
+  hotel_ids         String[] @db.Text
+  rates_index       Json     @db.JsonB
+  etg_search_id     String?  @db.VarChar(255)
+  cached_at         DateTime @default(now()) @db.Timestamp(6)
+  expires_at        DateTime @db.Timestamp(6)
+  hit_count         Int      @default(0)
+
+  @@index([search_signature], name: "idx_search_signature")
+  @@index([expires_at], name: "idx_search_expires_at")
+  @@index([region_id], name: "idx_search_region")
+  @@map("search_cache")
+}
+
+model AutocompleteCache {
+  id          String   @id @default(uuid()) @db.Uuid
+  query_key   String   @unique @db.VarChar(300)
+  query       String   @db.VarChar(255)
+  locale      String   @default("en") @db.VarChar(10)
+  results     Json     @db.JsonB
+  cached_at   DateTime @default(now()) @db.Timestamp(6)
+  expires_at  DateTime @db.Timestamp(6)
+
+  @@index([query_key], name: "idx_autocomplete_query")
+  @@index([expires_at], name: "idx_autocomplete_expires")
+  @@map("autocomplete_cache")
+}
+
+model User {
+  id                        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email                     String    @unique @db.VarChar(255)
+  password                  String?   @db.Text
+  first_name                String?   @db.VarChar(100)
+  last_name                 String?   @db.VarChar(100)
+  phone_number              String?   @db.VarChar(20)
+  agency_name               String?   @db.VarChar(255)
+  legal_name                String?   @db.VarChar(255)
+  city                      String?   @db.VarChar(100)
+  address                   String?   @db.Text
+  actual_address_matches    Boolean?  @default(true)
+  itn                       String?   @db.VarChar(100)
+  logo_url                  String?   @db.Text
+  dummy_email               String?   @db.VarChar(255)
+  otp                       String?   @db.VarChar(10)
+  email_verification        String?   @default("unverified") @db.VarChar(20)
+  status                    String?   @default("pending") @db.VarChar(20)
+  last_login                DateTime? @db.Timestamp(6)
+  ratehawk_email            String?   @db.VarChar(255)
+  created_at                DateTime  @default(now()) @db.Timestamp(6)
+
+  auth_logs                 AuthLog[]
+
+  @@index([email], name: "idx_users_email")
+  @@map("users")
+}
+
+model AuthLog {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id         String   @db.Uuid
+  email           String   @db.VarChar(255)
+  success         Boolean
+  error_message   String?  @db.Text
+  duration        Int?
+  session_id      String?  @db.VarChar(255)
+  final_url       String?  @db.Text
+  timestamp       DateTime @default(now()) @db.Timestamp(6)
+
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], name: "idx_auth_logs_user")
+  @@index([timestamp], name: "idx_auth_logs_timestamp")
+  @@map("auth_logs")
+}
+
+model HotelDumpData {
+  id                  String   @id @default(uuid()) @db.Uuid
+  hotel_id            String   @unique @db.VarChar(255)
+  language            String   @default("en") @db.VarChar(10)
+
+  name                String?  @db.VarChar(500)
+  address             String?  @db.Text
+  city                String?  @db.VarChar(255)
+  country             String?  @db.VarChar(100)
+  postal_code         String?  @db.VarChar(50)
+
+  latitude            Float?   @db.DoublePrecision
+  longitude           Float?   @db.DoublePrecision
+
+  star_rating         Int?     @db.SmallInt
+  kind                String?  @db.VarChar(50)
+
+  check_in_time       String?  @db.VarChar(50)
+  check_out_time      String?  @db.VarChar(50)
+
+  email               String?  @db.VarChar(255)
+  phone               String?  @db.VarChar(100)
+
+  images              Json     @default("[]") @db.JsonB
+  amenities           Json     @default("[]") @db.JsonB
+  amenity_groups      Json     @default("[]") @db.JsonB
+  description         String?  @db.Text
+  description_struct  Json?    @db.JsonB
+
+  policy_struct       Json?    @db.JsonB
+  room_groups         Json     @default("[]") @db.JsonB
+  facts               Json?    @db.JsonB
+
+  raw_data            Json     @db.JsonB
+
+  imported_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at          DateTime @updatedAt @db.Timestamp(6)
+  dump_version        String?  @db.VarChar(50)
+
+  @@index([hotel_id], name: "idx_dump_hotel_id")
+  @@index([city], name: "idx_dump_city")
+  @@index([country], name: "idx_dump_country")
+  @@index([star_rating], name: "idx_dump_star_rating")
+  @@map("hotel_dump_data")
+}
+
+model HotelReview {
+  id              String   @id @default(uuid()) @db.Uuid
+  hotel_id        String   @db.VarChar(255)
+  language        String   @default("en") @db.VarChar(10)
+
+  reviewer_name   String?  @db.VarChar(255)
+  rating          Float    @db.DoublePrecision
+  review_text     String   @db.Text
+  review_date     DateTime @db.Timestamp(6)
+  helpful_count   Int      @default(0)
+
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  dump_version    String?  @db.VarChar(50)
+
+  @@index([hotel_id], name: "idx_review_hotel_id")
+  @@index([rating], name: "idx_review_rating")
+  @@index([review_date], name: "idx_review_date")
+  @@map("hotel_reviews")
+}
+
+model HotelPOI {
+  id            String @id @default(uuid()) @db.Uuid
+  hotel_id      String @db.VarChar(255)
+
+  poi_name      String @db.VarChar(500)
+  poi_name_en   String @db.VarChar(500)
+  poi_type      String @db.VarChar(100)
+  poi_subtype   String @db.VarChar(100)
+  distance_m    Int
+
+  @@index([hotel_id], name: "idx_poi_hotel_id")
+  @@map("hotel_poi")
+}
+
+model FilterValuesCache {
+  id            String   @id @default(uuid()) @db.Uuid
+  filter_values Json     @db.JsonB
+  cached_at     DateTime @default(now()) @db.Timestamp(6)
+  expires_at    DateTime @db.Timestamp(6)
+
+  @@map("filter_values_cache")
+}
+
+model RegionData {
+  id            Int      @id
+  name          String   @db.VarChar(500)
+  country_code  String   @db.VarChar(10)
+  iata          String?  @db.VarChar(10)
+  type          String   @db.VarChar(50)
+  parent_id     Int?
+
+  created_at    DateTime @default(now()) @db.Timestamp(6)
+  dump_version  String?  @db.VarChar(50)
+
+  @@index([country_code], name: "idx_region_country")
+  @@index([type], name: "idx_region_type")
+  @@index([name], name: "idx_region_name")
+  @@map("region_data")
+}
+
+model StaticData {
+  id            String   @id @default(uuid()) @db.Uuid
+  category      String   @db.VarChar(100)
+  code          String   @db.VarChar(100)
+  translations  Json     @db.JsonB
+
+  updated_at    DateTime @updatedAt @db.Timestamp(6)
+
+  @@unique([category, code], name: "unique_category_code")
+  @@map("static_data")
+}
+
+model DumpMetadata {
+  id              String   @id @default(uuid()) @db.Uuid
+  dump_type       String   @unique @db.VarChar(100)
+
+  last_update     DateTime @db.Timestamp(6)
+  last_download   DateTime @db.Timestamp(6)
+  dump_version    String   @db.VarChar(50)
+  record_count    Int
+
+  status          String   @db.VarChar(50)
+  error_message   String?  @db.Text
+
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+  updated_at      DateTime @updatedAt @db.Timestamp(6)
+
+  @@map("dump_metadata")
+}

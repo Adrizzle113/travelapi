@@ -28,7 +28,7 @@ export const getUserByEmail = async (email) => {
     .from("users")
     .select("*")
     .eq("email", email)
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   return data;
@@ -40,7 +40,7 @@ export const updateVerified = async (email) => {
   }
   const { data, error } = await supabase
     .from("users")
-    .update({ email_Verification: "verified" })
+    .update({ email_verification: "verified" })
     .eq("email", email)
     .select();
 
