@@ -29,9 +29,11 @@ fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{metho
 router.post("/search", async (req, res) => {
   const startTime = Date.now();
   const {
-    userId, // Optional - kept for backward compatibility
+    userId,
     destination,
-    destId, // Alternative: direct region_id
+    destId,
+    regionId: regionIdFromBody,  // ← Add this
+    region_id,                    // ← Add this
     checkin,
     checkout,
     guests,
@@ -50,6 +52,7 @@ router.post("/search", async (req, res) => {
   console.log(`👥 Guests: ${JSON.stringify(guests)}`);
   console.log(`🌍 Residency: ${residency}`);
   console.log(`💰 Currency: ${currency}`);
+  console.log(`🆔 Dest ID: ${destId || regionIdFromBody || region_id || "N/A"}`);
 
   // Validation - userId is now optional
   if (!destination && !destId) {
@@ -75,7 +78,7 @@ router.post("/search", async (req, res) => {
   }
 
   try {
-    let regionId = destId;
+    let regionId = destId || regionIdFromBody || region_id;
 
     // If no destId provided, try to parse destination or look it up
     if (!regionId) {
