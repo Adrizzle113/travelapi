@@ -53,17 +53,34 @@ router.get("/filter-values", async (req, res) => {
     // Normalize the response to ensure all expected arrays exist
     // This prevents frontend errors when calling .map() on undefined
     const rawData = filterValuesResult.data || {};
+    
+    // Comprehensive normalization - ensure ALL possible filter fields are arrays
     const normalizedData = {
+      // Core filter arrays - always ensure they're arrays
       languages: Array.isArray(rawData.languages) ? rawData.languages : ["en", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ko"],
       countries: Array.isArray(rawData.countries) ? rawData.countries : [],
       amenities: Array.isArray(rawData.amenities) ? rawData.amenities : [],
       star_ratings: Array.isArray(rawData.star_ratings) ? rawData.star_ratings : [1, 2, 3, 4, 5],
       hotel_types: Array.isArray(rawData.hotel_types) ? rawData.hotel_types : [],
-      // Preserve any other fields from the API response
+      
+      // Additional common filter fields that might be expected
+      currencies: Array.isArray(rawData.currencies) ? rawData.currencies : [],
+      payment_methods: Array.isArray(rawData.payment_methods) ? rawData.payment_methods : [],
+      room_types: Array.isArray(rawData.room_types) ? rawData.room_types : [],
+      facilities: Array.isArray(rawData.facilities) ? rawData.facilities : [],
+      property_types: Array.isArray(rawData.property_types) ? rawData.property_types : [],
+      
+      // Preserve any other fields from the API response (but ensure arrays are arrays)
       ...(typeof rawData === 'object' && rawData !== null ? Object.fromEntries(
-        Object.entries(rawData).filter(([key]) => 
-          !['languages', 'countries', 'amenities', 'star_ratings', 'hotel_types'].includes(key)
-        )
+        Object.entries(rawData)
+          .filter(([key]) => 
+            !['languages', 'countries', 'amenities', 'star_ratings', 'hotel_types', 
+              'currencies', 'payment_methods', 'room_types', 'facilities', 'property_types'].includes(key)
+          )
+          .map(([key, value]) => [
+            key, 
+            Array.isArray(value) ? value : (value !== null && value !== undefined ? value : [])
+          ])
       ) : {}),
     };
     
@@ -85,6 +102,7 @@ router.get("/filter-values", async (req, res) => {
     console.error("💥 Filter values error stack:", error.stack);
     
     // Return default values instead of 500 error
+    // Use the same comprehensive structure as the success case
     const defaultResponse = {
       success: true,
       message: "Using default filter values (API unavailable)",
@@ -94,6 +112,11 @@ router.get("/filter-values", async (req, res) => {
         amenities: [],
         star_ratings: [1, 2, 3, 4, 5],
         hotel_types: [],
+        currencies: [],
+        payment_methods: [],
+        room_types: [],
+        facilities: [],
+        property_types: [],
         note: "Using default values - API error occurred"
       },
       status: "default",
