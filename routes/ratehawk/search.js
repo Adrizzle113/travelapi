@@ -6,13 +6,16 @@
 import express from "express";
 import { validateSession } from "../../services/ratehawkLoginService.js";
 import { searchHotels } from "../../services/ratehawkSearchService.js";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
-const { WorldOTAService } = require("../../services/worldotaService.js");
+import { WorldOTAService } from "../../services/worldotaService.js";
 
 const router = express.Router();
+// #region agent log
+fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'routes/ratehawk/search.js:15',message:'Importing WorldOTAService via ES module',data:{importType:'ESM',serviceName:'WorldOTAService'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+// #endregion
 const worldotaService = new WorldOTAService();
+// #region agent log
+fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'routes/ratehawk/search.js:17',message:'WorldOTAService instantiated successfully',data:{serviceType:typeof worldotaService,hasSearchByPOI:typeof worldotaService.searchHotelsByPOI},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+// #endregion
 
 // ================================
 // HOTEL SEARCH

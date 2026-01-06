@@ -4,10 +4,7 @@
  */
 
 import express from "express";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
-const { WorldOTAService } = require("../../services/worldotaService.js");
+import { WorldOTAService } from "../../services/worldotaService.js";
 
 const router = express.Router();
 const worldotaService = new WorldOTAService();

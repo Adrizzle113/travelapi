@@ -1,9 +1,6 @@
-import { createRequire } from "module";
 import { v4 as uuidv4 } from "uuid";
 import fetch from "node-fetch";
-
-const require = createRequire(import.meta.url);
-const { WorldOTAService } = require("../../services/worldotaService.js");
+import { WorldOTAService } from "../../services/worldotaService.js";
 
 const worldotaService = new WorldOTAService();
 

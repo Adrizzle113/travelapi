@@ -57,6 +57,12 @@ export const createUser = async (req, res) => {
       }
 
       try {
+        if (!supabase) {
+          return res.status(500).json({
+            success: false,
+            error: "Supabase is not configured. Please set SUPABASE_URL and SUPABASE_KEY environment variables.",
+          });
+        }
         const { data, error } = await supabase.storage
           .from("logos")
           .upload(

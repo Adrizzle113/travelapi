@@ -1,12 +1,33 @@
 import dotenv from "dotenv";
 dotenv.config();
+// #region agent log
+console.log('[DEBUG] Starting server.js module load');
+// #endregion
 import express from "express";
 import cors from "cors";
+// #region agent log
+console.log('[DEBUG] Express and cors imported');
+// #endregion
 import { initializeDatabase } from "./config/database.js";
+// #region agent log
+console.log('[DEBUG] Database module imported');
+// #endregion
 
 // Import routes
+// #region agent log
+console.log('[DEBUG] About to import authRoutes');
+// #endregion
 import authRoutes from "./routes/auth.js";
+// #region agent log
+console.log('[DEBUG] authRoutes imported, about to import ratehawkRoutes');
+// #endregion
 import ratehawkRoutes from "./routes/ratehawk/index.js";
+// #region agent log
+console.log('[DEBUG] ratehawkRoutes imported successfully', !!ratehawkRoutes);
+if (typeof fetch !== 'undefined') {
+  fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:15',message:'ratehawkRoutes imported successfully',data:{hasRoutes:!!ratehawkRoutes},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+}
+// #endregion
 
 // Import services
 import { loginUserToRateHawk } from "./services/ratehawkLoginService.js";
@@ -14,8 +35,14 @@ import userRoutes from "./src/routes/userRoutes.js";
 import { BookingFormCreationRoute } from "./src/routes/createBookingFormRoutes.js";
 import DestinationRoute from "./src/routes/destinationRoute.js";
 
+// #region agent log
+fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:18',message:'Express app created',data:{expressImported:typeof express},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+// #endregion
 const app = express();
 const PORT = process.env.PORT || 3001;
+// #region agent log
+fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:21',message:'App initialized',data:{port:PORT},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+// #endregion
 
 // Initialize global session storage
 global.userSessions = new Map();
@@ -461,9 +488,18 @@ process.on("SIGINT", () => {
 
 async function startServer() {
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:474',message:'startServer called',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     await initializeDatabase();
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:477',message:'Database initialized',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
     app.listen(PORT, () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:480',message:'Server started successfully',data:{port:PORT},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       console.log("🚀 ===== SERVER STARTED =====");
       console.log(`📡 Server running on port ${PORT}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
@@ -494,6 +530,9 @@ async function startServer() {
       }
     }, 60 * 60 * 1000);
   } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:517',message:'Server startup error',data:{errorMessage:error.message,errorStack:error.stack,errorName:error.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     console.error("💥 Failed to start server:", error);
     process.exit(1);
   }

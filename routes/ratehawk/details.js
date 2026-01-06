@@ -8,10 +8,7 @@ import express from "express";
 import axios from "axios";
 import { validateSession } from "../../services/ratehawkLoginService.js";
 import { generateSearchUuid } from "../../utils/uuid-generator.js";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
-const { WorldOTAService } = require("../../services/worldotaService.js");
+import { WorldOTAService } from "../../services/worldotaService.js";
 
 const router = express.Router();
 

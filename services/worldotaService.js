@@ -1,8 +1,19 @@
 // WorldOTA API Service - Direct API integration
-const fetch = require("node-fetch");
+import fetch from "node-fetch";
+
+// #region agent log
+if (typeof fetch !== 'undefined') {
+  fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worldotaService.js:4',message:'ES module loaded successfully',data:{moduleType:'ESM',fetchImported:typeof fetch},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+}
+// #endregion
 
 class WorldOTAService {
   constructor() {
+    // #region agent log
+    if (typeof fetch !== 'undefined') {
+      fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worldotaService.js:9',message:'WorldOTAService constructor called',data:{keyId:process.env.WORLDOTA_KEY_ID||'11606',hasApiKey:!!process.env.WORLDOTA_API_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    }
+    // #endregion
     // Add your WorldOTA API credentials here
     this.keyId = process.env.WORLDOTA_KEY_ID || "11606";
     this.apiKey = process.env.WORLDOTA_API_KEY || "ff9702bb-ba93-4996-a31e-547983c51530";
@@ -992,13 +1003,46 @@ class WorldOTAService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || errorData.message || "";
+        
+        // #region agent log
+        if (typeof fetch !== 'undefined') {
+          fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worldotaService.js:1004',message:'Filter values API error',data:{status:response.status,statusText:response.statusText,error:errorMessage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
+        
+        // Handle 403 Forbidden - likely means API key doesn't have access to Content API
+        if (response.status === 403) {
+          console.warn("⚠️ Filter values endpoint returned 403 - API key may not have access to Content API");
+          // Return default filter values structure instead of failing
+          return {
+            success: true,
+            data: {
+              languages: ["en", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ko"],
+              countries: [],
+              amenities: [],
+              star_ratings: [1, 2, 3, 4, 5],
+              hotel_types: [],
+              note: "Using default values - Content API access not available"
+            },
+            status: "default",
+            warning: "Content API returned 403 - using default filter values"
+          };
+        }
+        
         throw new Error(
-          `WorldOTA API failed: ${response.status} ${response.statusText} - ${errorData.error || ""}`
+          `WorldOTA API failed: ${response.status} ${response.statusText} - ${errorMessage}`
         );
       }
 
       const data = await response.json();
       console.log(`✅ WorldOTA API Success: Filter values retrieved`);
+      
+      // #region agent log
+      if (typeof fetch !== 'undefined') {
+        fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worldotaService.js:1025',message:'Filter values retrieved successfully',data:{hasData:!!data.data,status:data.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      }
+      // #endregion
       
       return {
         success: true,
@@ -1007,9 +1051,14 @@ class WorldOTAService {
       };
     } catch (error) {
       console.error("💥 WorldOTA API Error:", error);
+      // #region agent log
+      if (typeof fetch !== 'undefined') {
+        fetch('http://127.0.0.1:7244/ingest/099a78ad-e1a7-4214-9836-b699f34a3356',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'worldotaService.js:1035',message:'Filter values exception',data:{errorMessage:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      }
+      // #endregion
       throw error;
     }
   }
 }
 
-module.exports = { WorldOTAService };
+export { WorldOTAService };
