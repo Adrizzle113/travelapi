@@ -50,12 +50,29 @@ router.get("/filter-values", async (req, res) => {
     
     const duration = Date.now() - startTime;
     
+    // Normalize the response to ensure all expected arrays exist
+    // This prevents frontend errors when calling .map() on undefined
+    const rawData = filterValuesResult.data || {};
+    const normalizedData = {
+      languages: Array.isArray(rawData.languages) ? rawData.languages : ["en", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ko"],
+      countries: Array.isArray(rawData.countries) ? rawData.countries : [],
+      amenities: Array.isArray(rawData.amenities) ? rawData.amenities : [],
+      star_ratings: Array.isArray(rawData.star_ratings) ? rawData.star_ratings : [1, 2, 3, 4, 5],
+      hotel_types: Array.isArray(rawData.hotel_types) ? rawData.hotel_types : [],
+      // Preserve any other fields from the API response
+      ...(typeof rawData === 'object' && rawData !== null ? Object.fromEntries(
+        Object.entries(rawData).filter(([key]) => 
+          !['languages', 'countries', 'amenities', 'star_ratings', 'hotel_types'].includes(key)
+        )
+      ) : {}),
+    };
+    
     // getFilterValues() always returns success: true (even for 403, it returns defaults)
     // So we can safely return the result
     const response = {
       success: true,
       message: "Filter values fetched successfully",
-      data: filterValuesResult.data,
+      data: normalizedData,
       status: filterValuesResult.status || "ok",
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
