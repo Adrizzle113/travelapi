@@ -4,7 +4,6 @@
  */
 
 import express from "express";
-import authRoutes from "./auth.js";
 import searchRoutes from "./search.js";
 import detailsRoutes from "./details.js";
 import staticInfoRoutes from "./static-info.js";
@@ -15,7 +14,7 @@ import filterValuesRoutes from "./filter-values.js";
 const router = express.Router();
 
 // Mount all sub-routes
-router.use(authRoutes);       // /login, /logout, /session, /test-auth
+// Note: Auth routes were moved/removed - login/register are now in /api/auth
 router.use(searchRoutes);     // /search
 router.use(detailsRoutes);    // /hotel/details, /hotel/details-t, /hotel-details
 router.use(staticInfoRoutes); // /hotel/static-info
