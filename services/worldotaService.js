@@ -970,6 +970,46 @@ class WorldOTAService {
 
     return regionMapping[destination] || regionMapping["Rio de Janeiro"];
   }
+
+  /**
+   * Get filter values from WorldOTA Content API
+   * Returns available filter options (languages, countries, amenities, star ratings, etc.)
+   * @returns {Object} Filter values including languages, countries, amenities, star ratings, hotel types
+   */
+  async getFilterValues() {
+    try {
+      console.log("🔍 === WORLDOTA API GET FILTER VALUES ===");
+      
+      const auth = Buffer.from(`${this.keyId}:${this.apiKey}`).toString("base64");
+      
+      const response = await fetch("https://api.worldota.net/api/content/v1/filter_values", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${auth}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          `WorldOTA API failed: ${response.status} ${response.statusText} - ${errorData.error || ""}`
+        );
+      }
+
+      const data = await response.json();
+      console.log(`✅ WorldOTA API Success: Filter values retrieved`);
+      
+      return {
+        success: true,
+        data: data.data || data,
+        status: data.status || "ok",
+      };
+    } catch (error) {
+      console.error("💥 WorldOTA API Error:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = { WorldOTAService };

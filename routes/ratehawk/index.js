@@ -10,6 +10,7 @@ import detailsRoutes from "./details.js";
 import staticInfoRoutes from "./static-info.js";
 import poiRoutes from "./poi.js";
 import statsRoutes from "./stats.js";
+import filterValuesRoutes from "./filter-values.js";
 
 const router = express.Router();
 
@@ -20,5 +21,6 @@ router.use(detailsRoutes);    // /hotel/details, /hotel/details-t, /hotel-detail
 router.use(staticInfoRoutes); // /hotel/static-info
 router.use(poiRoutes);        // /hotel/:id/poi, /poi/refresh-cache
 router.use(statsRoutes);      // /stats
+router.use(filterValuesRoutes); // /filter-values
 
 export default router;
