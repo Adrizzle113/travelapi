@@ -8,14 +8,21 @@ import express from "express";
 import axios from "axios";
 import { validateSession } from "../../services/ratehawkLoginService.js";
 import { generateSearchUuid } from "../../utils/uuid-generator.js";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const { WorldOTAService } = require("../../services/worldotaService.js");
 
 const router = express.Router();
 
-// RateHawk API Credentials
+// RateHawk API Credentials (kept for backward compatibility)
 const RATEHAWK_CREDENTIALS = {
   username: "11606",
   password: "ff9702bb-ba93-4996-a31e-547983c51530",
 };
+
+// Initialize WorldOTA Service
+const worldotaService = new WorldOTAService();
 
 // ================================
 // HOTEL DETAILS (Old Method - RateHawk Session-Based)
@@ -165,47 +172,37 @@ router.post("/hotel/details", async (req, res) => {
     });
   }
 
-  // Build request - try different residency formats
-  const reqData = {
-    checkin: searchContext.checkin,
-    checkout: searchContext.checkout,
-    residency: residency?.replace('en-', '') || "us",  // Convert "en-us" to "us"
-    language: "en",
-    guests: searchContext.guests || [{ adults: 2, children: [] }],
-    id: hotelId,
-    currency: currency || "USD",
-  };
-
-  console.log("📤 Sending to RateHawk:", JSON.stringify(reqData, null, 2));
+  // Normalize residency format
+  const normalizedResidency = residency?.replace('en-', '') || residency || "us";
 
   try {
-    const result = await axios.post(
-      "https://api.worldota.net/api/b2b/v3/search/hp/",
-      reqData,
-      {
-        auth: RATEHAWK_CREDENTIALS,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        timeout: 30000, // 30 second timeout
-      }
-    );
+    // Use WorldOTAService method
+    const hotelPageResult = await worldotaService.getHotelPage({
+      hotelId: hotelId,
+      checkin: searchContext.checkin,
+      checkout: searchContext.checkout,
+      guests: searchContext.guests || [{ adults: 2, children: [] }],
+      residency: normalizedResidency,
+      language: "en",
+      currency: currency || "USD",
+    });
 
     const duration = Date.now() - startTime;
-    console.log(`✅ Hotel details fetched in ${duration}ms`);
-    console.log(`📊 Response status: ${result.data?.status}`);
-    
-    if (result.data?.data) {
-      const hotelData = result.data.data;
-      console.log(`🏨 Hotel: ${hotelData.hotel?.name || 'Unknown'}`);
-      console.log(`📦 Room groups: ${hotelData.hotel?.room_groups?.length || 0}`);
-      console.log(`💰 Rates: ${hotelData.hotel?.rates?.length || 0}`);
+
+    if (!hotelPageResult.success) {
+      throw new Error(hotelPageResult.error || "Failed to fetch hotel details");
     }
 
+    // Extract hotel data from response
+    const hotel = hotelPageResult.hotel || hotelPageResult.hotels?.[0] || null;
+    
     res.json({
       success: true,
       message: "Hotel details fetched successfully",
-      data: result.data || {},
+      data: hotelPageResult.data || {},
+      hotel: hotel,
+      hotels: hotelPageResult.hotels || [],
+      status: hotelPageResult.status,
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     });
@@ -213,33 +210,21 @@ router.post("/hotel/details", async (req, res) => {
     const duration = Date.now() - startTime;
     console.error("💥 Hotel details error:", error.message);
     
-    // Log the actual error from RateHawk
-    if (error.response) {
-      console.error(`❌ RateHawk API Error:`);
-      console.error(`   Status: ${error.response.status}`);
-      console.error(`   Error:`, JSON.stringify(error.response.data, null, 2));
-      console.error(`   Rate limit remaining: ${error.response.headers['x-ratelimit-remaining']}`);
-      
-      // Return helpful error message
-      const ratehawkError = error.response.data;
-      
-      if (ratehawkError.error === 'invalid_params') {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid search parameters",
-          details: "RateHawk rejected the search parameters. This may be due to:",
-          suggestions: [
-            "Check-in date too soon (try dates 3+ days in future)",
-            "Invalid hotel ID format",
-            "Invalid residency code",
-            "Missing or invalid guest configuration"
-          ],
-          requestData: reqData,
-          ratehawkError: ratehawkError,
-          duration: `${duration}ms`,
-          timestamp: new Date().toISOString(),
-        });
-      }
+    // Handle specific error cases
+    if (error.message.includes('invalid_params')) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid search parameters",
+        details: "The search parameters were rejected. This may be due to:",
+        suggestions: [
+          "Check-in date too soon (try dates 3+ days in future)",
+          "Invalid hotel ID format",
+          "Invalid residency code",
+          "Missing or invalid guest configuration"
+        ],
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
     }
     
     res.status(500).json({

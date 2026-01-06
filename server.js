@@ -320,6 +320,113 @@ app.post("/api/webhook/ratehawk-login", async (req, res) => {
   }
 });
 
+// ================================
+// BOOKING STATUS WEBHOOK
+// ================================
+app.post("/api/webhook/booking-status", async (req, res) => {
+  const startTime = Date.now();
+  console.log("🔔 === BOOKING STATUS WEBHOOK RECEIVED ===");
+  console.log("📥 Webhook payload:", JSON.stringify(req.body, null, 2));
+  console.log("📋 Headers:", JSON.stringify(req.headers, null, 2));
+
+  try {
+    // Extract booking information from webhook payload
+    const {
+      order_id,
+      partner_order_id,
+      status,
+      item_id,
+      booking_status,
+      error,
+      data,
+    } = req.body;
+
+    // Validate required fields
+    if (!order_id && !partner_order_id) {
+      console.warn("⚠️ Webhook missing order_id or partner_order_id");
+      return res.status(400).json({
+        success: false,
+        error: "Missing order_id or partner_order_id",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const orderIdentifier = order_id || partner_order_id;
+    const finalStatus = status || booking_status || "unknown";
+
+    console.log(`📋 Order ID: ${order_id || 'N/A'}`);
+    console.log(`🆔 Partner Order ID: ${partner_order_id || 'N/A'}`);
+    console.log(`📊 Status: ${finalStatus}`);
+    console.log(`📦 Item ID: ${item_id || 'N/A'}`);
+
+    if (error) {
+      console.error(`❌ Booking error: ${error}`);
+    }
+
+    // Process different booking statuses
+    switch (finalStatus.toLowerCase()) {
+      case "ok":
+      case "confirmed":
+      case "completed":
+        console.log("✅ Booking confirmed successfully");
+        // TODO: Update database, send confirmation email, etc.
+        break;
+
+      case "processing":
+        console.log("⏳ Booking is still processing");
+        // TODO: Update database status
+        break;
+
+      case "error":
+      case "failed":
+      case "rejected":
+        console.error(`❌ Booking failed: ${error || 'Unknown error'}`);
+        // TODO: Update database, notify user, handle refund, etc.
+        break;
+
+      case "cancelled":
+        console.log("🚫 Booking was cancelled");
+        // TODO: Update database, handle cancellation
+        break;
+
+      default:
+        console.log(`ℹ️ Unknown booking status: ${finalStatus}`);
+    }
+
+    // Store booking status update (optional - you can implement database storage here)
+    // Example: await storeBookingStatus(order_id, partner_order_id, finalStatus, data);
+
+    const duration = Date.now() - startTime;
+    console.log(`✅ Webhook processed in ${duration}ms`);
+
+    // Always return 200 to acknowledge receipt
+    // ETG will retry if we return an error status
+    res.status(200).json({
+      success: true,
+      message: "Webhook received and processed",
+      order_id: order_id,
+      partner_order_id: partner_order_id,
+      status: finalStatus,
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`,
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error("💥 Webhook processing error:", error);
+    console.error("Error stack:", error.stack);
+
+    // Still return 200 to prevent retries for processing errors
+    // Log the error for manual review
+    res.status(200).json({
+      success: false,
+      error: "Webhook received but processing failed",
+      error_message: error.message,
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`,
+    });
+  }
+});
+
 app.use("*", (req, res) => {
   res.status(404).json({
     error: "Endpoint not found",
@@ -363,6 +470,7 @@ async function startServer() {
       console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`);
       console.log(`🔐 Auth routes: http://localhost:${PORT}/api/auth/*`);
       console.log(`🏨 RateHawk routes: http://localhost:${PORT}/api/ratehawk/*`);
+      console.log(`🔔 Booking webhook: http://localhost:${PORT}/api/webhook/booking-status`);
       console.log(`🌍 Browserless: ${process.env.BROWSERLESS_TOKEN ? "✅ Configured" : "❌ Not configured"}`);
       console.log("===============================");
     });
