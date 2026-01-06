@@ -9,6 +9,7 @@ import cors from "cors";
 console.log('[DEBUG] Express and cors imported');
 // #endregion
 import { initializeDatabase } from "./config/database.js";
+import { supabase } from "./config/supabaseClient.js";
 // #region agent log
 console.log('[DEBUG] Database module imported');
 // #endregion
@@ -221,7 +222,7 @@ app.options("/api/health", (req, res) => {
   res.status(403).json({ error: "CORS preflight failed" });
 });
 
-app.get("/api/health", (req, res) => {
+app.get("/api/health", async (req, res) => {
   const origin = req.headers.origin;
   console.log(`📊 GET /api/health request from: ${origin}`);
 
@@ -239,13 +240,37 @@ app.get("/api/health", (req, res) => {
     }
   }
 
+  // Test Supabase connection
+  let databaseStatus = "not_configured";
+  let databaseError = null;
+  
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('count')
+        .limit(1);
+      
+      if (error && error.code !== 'PGRST116') {
+        databaseStatus = "error";
+        databaseError = error.message;
+      } else {
+        databaseStatus = "connected";
+      }
+    } catch (err) {
+      databaseStatus = "error";
+      databaseError = err.message;
+    }
+  }
+
   res.json({
     status: "healthy",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || "development",
     services: {
-      database: "connected",
+      database: databaseStatus,
+      databaseError: databaseError,
       browserless: process.env.BROWSERLESS_TOKEN ? "configured" : "not_configured",
       ratehawk: "operational",
     },
@@ -266,6 +291,71 @@ app.get("/api/test", (req, res) => {
     activeSessions: global.userSessions.size,
     environment: process.env.NODE_ENV || "development",
   });
+});
+
+app.get("/api/test/supabase", async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(503).json({
+        success: false,
+        error: "Supabase not configured",
+        message: "SUPABASE_URL and SUPABASE_KEY environment variables are not set",
+        config: {
+          hasUrl: !!process.env.SUPABASE_URL,
+          hasKey: !!process.env.SUPABASE_KEY,
+        }
+      });
+    }
+
+    // Test 1: Simple database query
+    const { data, error } = await supabase
+      .from('users')
+      .select('count')
+      .limit(1);
+
+    if (error && error.code !== 'PGRST116') {
+      return res.status(500).json({
+        success: false,
+        error: "Supabase connection failed",
+        message: error.message,
+        code: error.code,
+        details: error,
+        hint: error.hint || null
+      });
+    }
+
+    // Test 2: Check if we can access auth (optional)
+    let authTest = null;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      authTest = "passed";
+    } catch (authError) {
+      authTest = `failed: ${authError.message}`;
+    }
+
+    res.json({
+      success: true,
+      message: "Supabase is connected and working!",
+      tests: {
+        databaseQuery: "passed",
+        connection: "active",
+        auth: authTest
+      },
+      config: {
+        url: process.env.SUPABASE_URL ? "Set" : "Missing",
+        key: process.env.SUPABASE_KEY ? "Set" : "Missing",
+        keyLength: process.env.SUPABASE_KEY?.length || 0
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Supabase test failed",
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
 });
 
 app.post("/api/cleanup-sessions", (req, res) => {
