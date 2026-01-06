@@ -2,6 +2,13 @@ import { supabase } from './supabaseClient.js';
 
 const initializeDatabase = async () => {
   try {
+    // Check if Supabase is configured
+    if (!supabase) {
+      console.log('⚠️ Supabase not configured - database features will be disabled');
+      console.log('   Set SUPABASE_URL and SUPABASE_KEY environment variables to enable');
+      return false;
+    }
+
     console.log('🗄️ Initializing Supabase database connection...');
 
     const { data, error } = await supabase
@@ -20,7 +27,9 @@ const initializeDatabase = async () => {
     return true;
   } catch (err) {
     console.error('❌ Error connecting to database:', err.message);
-    throw err;
+    console.error('⚠️ Database features will be disabled');
+    // Don't throw - allow server to start without database
+    return false;
   }
 };
 
@@ -30,6 +39,11 @@ const getDatabase = () => {
 
 const logAuthAttempt = async (userId, email, result, duration) => {
   try {
+    if (!supabase) {
+      console.log('⚠️ Supabase not configured - skipping auth log');
+      return null;
+    }
+
     const logEntry = {
       user_id: userId,
       email,
@@ -57,12 +71,24 @@ const logAuthAttempt = async (userId, email, result, duration) => {
     return data;
   } catch (err) {
     console.error('❌ Error in logAuthAttempt:', err.message);
-    throw err;
+    // Don't throw - allow operation to continue without logging
+    return null;
   }
 };
 
 const getAuthStats = async () => {
   try {
+    if (!supabase) {
+      console.log('⚠️ Supabase not configured - returning empty stats');
+      return {
+        total_attempts: 0,
+        successful_attempts: 0,
+        avg_duration: 0,
+        unique_users: 0,
+        attempts_24h: 0
+      };
+    }
+
     const { data, error } = await supabase.rpc('get_auth_stats');
 
     if (error) {
