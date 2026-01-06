@@ -160,9 +160,23 @@ app.options("*", (req, res) => {
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// Request logging middleware - log all incoming requests for debugging
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
-  console.log(`${timestamp} ${req.method} ${req.url}`);
+  const requestId = req.headers['x-request-id'] || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Store request ID for error tracking
+  req.requestId = requestId;
+  
+  console.log(`📨 [${requestId}] ${req.method} ${req.url} - Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB heap / ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB RSS`);
+  
+  // Log request body for POST requests (truncated for large bodies)
+  if (req.method === 'POST' && req.body) {
+    const bodyStr = JSON.stringify(req.body);
+    const truncatedBody = bodyStr.length > 500 ? bodyStr.substring(0, 500) + '...' : bodyStr;
+    console.log(`📦 [${requestId}] Request body: ${truncatedBody}`);
+  }
+  
   next();
 });
 
@@ -455,23 +469,43 @@ app.post("/api/webhook/booking-status", async (req, res) => {
 });
 
 app.use("*", (req, res) => {
+  const requestId = req.requestId || 'unknown';
+  console.log(`❌ [${requestId}] Endpoint not found: ${req.method} ${req.originalUrl || req.url}`);
+  console.log(`   Request ID: ${requestId}`);
+  console.log(`   Original URL: ${req.originalUrl || req.url}`);
+  
   res.status(404).json({
     error: "Endpoint not found",
+    method: req.method,
+    path: req.originalUrl || req.url,
+    requestId: requestId,
     availableEndpoints: {
       health: "GET /api/health",
       test: "GET /api/test",
       auth: "POST /api/auth/login, POST /api/auth/register",
       ratehawk: "POST /api/ratehawk/login, POST /api/ratehawk/search, POST /api/ratehawk/hotel/static-info",
+      destination: "POST /api/destination",
+      filterValues: "GET /api/ratehawk/filter-values",
       sessions: "GET /api/sessions, POST /api/cleanup-sessions",
     },
   });
 });
 
 app.use((err, req, res, next) => {
-  console.error("💥 Server error:", err);
-  res.status(500).json({
+  const requestId = req.requestId || 'unknown';
+  const statusCode = err.statusCode || 500;
+  
+  console.error(`🚨 SERVER ERROR: [${requestId}] ${req.method} ${req.originalUrl || req.url} returned ${statusCode}`);
+  console.error(`💥 Server error:`, err);
+  console.error(`   Error message: ${err.message}`);
+  console.error(`   Error stack: ${err.stack}`);
+  console.error(`   Request ID: ${requestId}`);
+  
+  res.status(statusCode).json({
     success: false,
     error: "Internal server error",
+    message: err.message || "An unexpected error occurred",
+    requestId: requestId,
     timestamp: new Date().toISOString(),
   });
 });
