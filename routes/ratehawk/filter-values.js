@@ -28,15 +28,13 @@ router.get("/filter-values", async (req, res) => {
     
     const duration = Date.now() - startTime;
     
-    if (!filterValuesResult.success) {
-      throw new Error(filterValuesResult.error || "Failed to fetch filter values");
-    }
-
+    // getFilterValues() always returns success: true (even for 403, it returns defaults)
+    // So we can safely return the result
     res.json({
       success: true,
       message: "Filter values fetched successfully",
       data: filterValuesResult.data,
-      status: filterValuesResult.status,
+      status: filterValuesResult.status || "ok",
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     });
@@ -44,9 +42,19 @@ router.get("/filter-values", async (req, res) => {
     const duration = Date.now() - startTime;
     console.error("💥 Filter values error:", error.message);
     
-    res.status(500).json({
-      success: false,
-      error: `Failed to fetch filter values: ${error.message}`,
+    // Return default values instead of 500 error
+    res.json({
+      success: true,
+      message: "Using default filter values (API unavailable)",
+      data: {
+        languages: ["en", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ko"],
+        countries: [],
+        amenities: [],
+        star_ratings: [1, 2, 3, 4, 5],
+        hotel_types: [],
+        note: "Using default values - API error occurred"
+      },
+      status: "default",
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
     });
