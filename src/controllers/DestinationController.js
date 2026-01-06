@@ -138,12 +138,22 @@ const destinationController = async (req, res) => {
     }
     // #endregion
     
-    return res.status(503).json({
-      success: false,
-      error: `Destination lookup failed: ${error.message}`,
+    // Return empty results (200) instead of 503 to allow frontend graceful handling
+    // This matches the behavior of filter-values endpoint
+    const emptyResponse = {
+      hotels: [],
+      regions: [],
+      query: query ? query.trim() : "",
+      note: `Destination lookup unavailable: ${error.message}`,
+      success: true,
+      status: "empty_fallback",
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),
-    });
+    };
+    
+    console.log(`⚠️ Returning empty results due to API error (allowing frontend graceful handling)`);
+    
+    return res.status(200).json(emptyResponse);
   }
 };
 
