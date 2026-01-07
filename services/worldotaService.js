@@ -921,6 +921,8 @@ class WorldOTAService {
         );
       }
 
+      console.log(`📦 Hotel hid for ${hotel.id}: ${hotel.hid}`);
+
       return {
         id: hotel.id,
         hid: hotel.hid,
