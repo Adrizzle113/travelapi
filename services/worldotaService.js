@@ -923,6 +923,7 @@ class WorldOTAService {
 
       return {
         id: hotel.id,
+        hid: hotel.hid,
         name: hotel.id
           .replace(/_/g, " ")
           .replace(/\b\w/g, (l) => l.toUpperCase()),
