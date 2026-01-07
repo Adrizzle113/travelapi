@@ -927,7 +927,7 @@ class WorldOTAService {
         name: hotel.id
           .replace(/_/g, " ")
           .replace(/\b\w/g, (l) => l.toUpperCase()),
-        location: "Location from API", // Extract from static data if available
+        location: hotel.region?.name || "Unknown",
         rating: 3, // Extract from static data if available
         reviewScore: 0,
         reviewCount: 0,
@@ -946,6 +946,7 @@ class WorldOTAService {
         ratehawk_data: {
           roomGroupsWithPricing: roomGroups,
           originalData: hotel,
+          hid: hotel.hid,
         },
       };
     });
