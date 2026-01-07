@@ -926,6 +926,7 @@ class WorldOTAService {
       return {
         id: hotel.id,
         hid: hotel.hid,
+        hotel_id: hotel.hid, // Alias for backward compatibility with frontend/database
         name: hotel.id
           .replace(/_/g, " ")
           .replace(/\b\w/g, (l) => l.toUpperCase()),
