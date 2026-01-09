@@ -78,26 +78,55 @@ router.post("/hotel/static-info", async (req, res) => {
     console.log(`   Has amenity_groups: ${!!hotelData.amenity_groups}`);
 
     const extractedInfo = {
-      description: extractDescription(hotelData.description_struct),
-      check_in_time: hotelData.check_in_time || null,
-      check_out_time: hotelData.check_out_time || null,
-      checkInTime: hotelData.check_in_time || null, // Keep for backward compatibility
-      checkOutTime: hotelData.check_out_time || null, // Keep for backward compatibility
-      address: hotelData.address || null,
-      email: hotelData.email || null,
-      phone: hotelData.phone || null,
+      // Hotel Identifiers
+      hid: hotelData.hid || null,
+      id: hotelData.id || null,
+      
+      // Basic Information
       name: hotelData.name || null,
+      kind: hotelData.kind || null,
       starRating: hotelData.star_rating || null,
+      
+      // Location Information
+      region: hotelData.region || null, // Full region object with name, country_code, country_name
+      address: hotelData.address || null,
+      postal_code: hotelData.postal_code || null,
       coordinates: {
         latitude: hotelData.latitude || null,
         longitude: hotelData.longitude || null,
       },
+      
+      // Contact Information
+      email: hotelData.email || null,
+      phone: hotelData.phone || null,
+      website: hotelData.website || null,
+      
+      // Check-in/Check-out
+      check_in_time: hotelData.check_in_time || null,
+      check_out_time: hotelData.check_out_time || null,
+      checkInTime: hotelData.check_in_time || null, // Keep for backward compatibility
+      checkOutTime: hotelData.check_out_time || null, // Keep for backward compatibility
+      
+      // Description (both flattened and structured)
+      description: extractDescription(hotelData.description_struct),
+      description_struct: hotelData.description_struct || null, // Keep raw structured data
+      
+      // Amenities (both flattened and grouped)
       amenities: extractAmenities(hotelData.amenity_groups),
+      amenity_groups: hotelData.amenity_groups || null, // Keep grouped structure
+      
+      // Policies (both parsed and structured)
       policies: extractPolicies(hotelData.policy_struct),
+      policy_struct: hotelData.policy_struct || null, // Keep structured data
+      
+      // Images and Media
       images: hotelData.images || [],
+      
+      // Room Information
       roomGroups: hotelData.room_groups || [],
+      
+      // Additional Data
       facts: hotelData.facts || {},
-      kind: hotelData.kind || null,
       metapolicyExtraInfo: hotelData.metapolicy_extra_info || null,
     };
 
@@ -252,14 +281,35 @@ router.get('/hotel/static-info/:hid', async (req, res) => {
       res.json({
         success: true,
         hotel: {
+          // Hotel Identifiers
           hid: hotelData.hid || parseInt(hid),
+          id: hotelData.id || null,
+          
+          // Basic Information
           name: hotelData.name || null,
-          city: hotelData.region?.name || null,
-          country: hotelData.region?.country_code || null,
           star_rating: hotelData.star_rating || null,
+          kind: hotelData.kind || null,
+          
+          // Location Information
+          region: hotelData.region || null, // Full region object
+          city: hotelData.region?.name || null, // Convenience field
+          country: hotelData.region?.country_code || null, // Convenience field
+          country_name: hotelData.region?.country_name || null,
           address: hotelData.address || null,
+          postal_code: hotelData.postal_code || null,
           latitude: hotelData.latitude || null,
           longitude: hotelData.longitude || null,
+          
+          // Contact Information
+          email: hotelData.email || null,
+          phone: hotelData.phone || null,
+          website: hotelData.website || null,
+          
+          // Check-in/Check-out Times
+          check_in_time: hotelData.check_in_time || null,
+          check_out_time: hotelData.check_out_time || null,
+          
+          // Images
           images: hotelData.images || [],
         },
         timestamp: new Date().toISOString(),
