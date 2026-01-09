@@ -42,14 +42,19 @@ router.post("/hotel/static-info", async (req, res) => {
   }
 
   try {
+    // Check if hotelId is numeric (hid) or string slug (id)
+    // Numeric IDs should use 'hid', string slugs should use 'id'
+    const isNumericId = /^\d+$/.test(String(hotelId));
+    const requestBody = isNumericId 
+      ? { hid: parseInt(hotelId), language: language }
+      : { id: hotelId, language: language };
+
     console.log("🔍 Calling RateHawk API: https://api.worldota.net/api/b2b/v3/hotel/info/");
+    console.log(`   Using ${isNumericId ? 'hid' : 'id'}: ${hotelId}`);
     
     const result = await axios.post(
       "https://api.worldota.net/api/b2b/v3/hotel/info/",
-      {
-        id: hotelId,
-        language: language
-      },
+      requestBody,
       {
         auth: RATEHAWK_CREDENTIALS,
         headers: {
