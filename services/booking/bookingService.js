@@ -355,8 +355,38 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
     throw new Error(errorMsg);
 
   } catch (error) {
+    // ✅ CRITICAL: Extract exact RateHawk error code from response
+    let ratehawkErrorCode = null;
+    let ratehawkErrorMessage = null;
+    
+    if (error.response?.data) {
+      const errorData = error.response.data;
+      // RateHawk returns error code in different possible locations:
+      ratehawkErrorCode = errorData.error?.code || 
+                         errorData.code || 
+                         errorData.error ||  // Sometimes error is just a string code
+                         (typeof errorData.error === 'string' ? errorData.error : null);
+      ratehawkErrorMessage = errorData.error?.message || 
+                            errorData.message || 
+                            errorData.error || 
+                            error.message;
+    }
+    
     const formattedError = formatAxiosError(error, 'Get order form');
+    
+    // ✅ Preserve exact RateHawk error code if available
+    if (ratehawkErrorCode) {
+      formattedError.code = ratehawkErrorCode;
+      formattedError.ratehawkError = {
+        code: ratehawkErrorCode,
+        message: ratehawkErrorMessage || formattedError.message
+      };
+    }
+    
     console.error('❌ ETG getOrderForm error:', formattedError.message);
+    if (ratehawkErrorCode) {
+      console.error(`   RateHawk Error Code: ${ratehawkErrorCode}`);
+    }
     
     // ✅ Log full error details
     if (error.response) {
@@ -538,8 +568,38 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
     throw new Error(response.data?.error?.message || 'Finish order failed');
 
   } catch (error) {
+    // ✅ CRITICAL: Extract exact RateHawk error code from response
+    let ratehawkErrorCode = null;
+    let ratehawkErrorMessage = null;
+    
+    if (error.response?.data) {
+      const errorData = error.response.data;
+      // RateHawk returns error code in different possible locations:
+      ratehawkErrorCode = errorData.error?.code || 
+                         errorData.code || 
+                         errorData.error ||  // Sometimes error is just a string code
+                         (typeof errorData.error === 'string' ? errorData.error : null);
+      ratehawkErrorMessage = errorData.error?.message || 
+                            errorData.message || 
+                            errorData.error || 
+                            error.message;
+    }
+    
     const formattedError = formatAxiosError(error, 'Finish order');
+    
+    // ✅ Preserve exact RateHawk error code if available
+    if (ratehawkErrorCode) {
+      formattedError.code = ratehawkErrorCode;
+      formattedError.ratehawkError = {
+        code: ratehawkErrorCode,
+        message: ratehawkErrorMessage || formattedError.message
+      };
+    }
+    
     console.error('❌ ETG finishOrder error:', formattedError.message);
+    if (ratehawkErrorCode) {
+      console.error(`   RateHawk Error Code: ${ratehawkErrorCode}`);
+    }
     if (error.response) {
       console.error('   Status:', error.response.status);
       console.error('   Full Error Data:', JSON.stringify(error.response.data, null, 2));
@@ -635,8 +695,38 @@ export async function getOrderStatus(order_id) {
     throw new Error(response.data?.error?.message || 'Get order status failed');
 
   } catch (error) {
+    // ✅ CRITICAL: Extract exact RateHawk error code from response
+    let ratehawkErrorCode = null;
+    let ratehawkErrorMessage = null;
+    
+    if (error.response?.data) {
+      const errorData = error.response.data;
+      // RateHawk returns error code in different possible locations:
+      ratehawkErrorCode = errorData.error?.code || 
+                         errorData.code || 
+                         errorData.error ||  // Sometimes error is just a string code
+                         (typeof errorData.error === 'string' ? errorData.error : null);
+      ratehawkErrorMessage = errorData.error?.message || 
+                            errorData.message || 
+                            errorData.error || 
+                            error.message;
+    }
+    
     const formattedError = formatAxiosError(error, 'Get order status');
+    
+    // ✅ Preserve exact RateHawk error code if available
+    if (ratehawkErrorCode) {
+      formattedError.code = ratehawkErrorCode;
+      formattedError.ratehawkError = {
+        code: ratehawkErrorCode,
+        message: ratehawkErrorMessage || formattedError.message
+      };
+    }
+    
     console.error('❌ ETG getOrderStatus error:', formattedError.message);
+    if (ratehawkErrorCode) {
+      console.error(`   RateHawk Error Code: ${ratehawkErrorCode}`);
+    }
     if (error.response) {
       console.error('   Status:', error.response.status);
       console.error('   Data:', JSON.stringify(error.response.data).substring(0, 200));

@@ -159,14 +159,17 @@ router.post("/prebook", validatePrebook, async (req, res) => {
 
     const duration = Date.now() - startTime;
 
+    // ✅ CRITICAL: Ensure prebook response matches frontend expected format
     res.json({
+      status: "ok",
       success: true,
       data: {
-        booking_hash,  // ✅ New p-... hash for booking form
+        book_hash: booking_hash,  // ✅ Use book_hash for consistency (frontend expects this)
+        booking_hash: booking_hash,  // ✅ Keep both for backward compatibility
         price_changed: priceChanged,
-        original_price: originalPrice,  // ✅ ADD
-        new_price: newPrice,            // ✅ ADD
-        currency: newPriceCurrency,     // ✅ ADD
+        new_price: newPrice ? parseFloat(newPrice) : undefined,  // ✅ Number format
+        original_price: originalPrice ? parseFloat(originalPrice) : undefined,  // ✅ Number format
+        currency: newPriceCurrency,  // ✅ Currency code
         price_increase_percent: validPriceIncrease,  // ✅ Return what was used
         hotels: result.hotels,
         changes: result.changes || {},
@@ -306,11 +309,18 @@ router.post("/order/form", validateOrderForm, async (req, res) => {
     const duration = Date.now() - startTime;
     console.error("💥 Order form error:", error);
 
+    // ✅ CRITICAL: Return exact RateHawk error code if available
+    const errorCode = error.code || 
+                     error.ratehawkError?.code || 
+                     error.category || 
+                     "ORDER_FORM_ERROR";
+
     res.status(error.statusCode || 500).json({
+      status: "error",
       success: false,
       error: {
-        message: error.message || "Failed to get order form",
-        code: error.category || "ORDER_FORM_ERROR"
+        code: errorCode,  // ✅ MUST include exact RateHawk error code
+        message: error.ratehawkError?.message || error.message || "Failed to get order form"
       },
       timestamp: new Date().toISOString(),
       duration: `${duration}ms`
@@ -420,12 +430,19 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
     const duration = Date.now() - startTime;
     console.error("💥 Order finish error:", error);
     
+    // ✅ CRITICAL: Return exact RateHawk error code if available
+    const errorCode = error.code || 
+                     error.ratehawkError?.code || 
+                     error.category || 
+                     "ORDER_FINISH_ERROR";
+    
     // Include detailed error information in response for debugging
     const errorResponse = {
+      status: "error",
       success: false,
       error: {
-        message: error.message || "Failed to finish order",
-        code: error.category || "ORDER_FINISH_ERROR"
+        code: errorCode,  // ✅ MUST include exact RateHawk error code
+        message: error.ratehawkError?.message || error.message || "Failed to finish order"
       },
       timestamp: new Date().toISOString(),
       duration: `${duration}ms`
@@ -504,11 +521,18 @@ router.post("/order/status", validateOrderId, async (req, res) => {
       console.error(`⚠️ Fake order ID ${order_id} returned 404. Enable ENABLE_MOCK_BOOKINGS=true for mock responses.`);
     }
 
+    // ✅ CRITICAL: Return exact RateHawk error code if available
+    const errorCode = error.code || 
+                     error.ratehawkError?.code || 
+                     error.category || 
+                     "ORDER_STATUS_ERROR";
+
     res.status(error.statusCode || 500).json({
+      status: "error",
       success: false,
       error: {
-        message: error.message || "Failed to get order status",
-        code: error.category || "ORDER_STATUS_ERROR"
+        code: errorCode,  // ✅ MUST include exact RateHawk error code
+        message: error.ratehawkError?.message || error.message || "Failed to get order status"
       },
       timestamp: new Date().toISOString(),
       duration: `${duration}ms`

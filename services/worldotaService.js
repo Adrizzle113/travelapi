@@ -1049,6 +1049,10 @@ class WorldOTAService {
                     rate.payment_options?.payment_types?.[0]
                       ?.cancellation_penalties,
                   
+                  // ✅ CRITICAL: Forward payment_options with tax_data as-is
+                  // Frontend needs tax_data.taxes array to display "Payable at Property"
+                  payment_options: rate.payment_options || null,  // Preserve full structure with tax_data
+                  
                   // ✅ ADD: ECLC Data Extraction
                   early_checkin: earlyCheckin,  // Full ECLC object from API
                   late_checkout: lateCheckout,  // Full ECLC object from API
