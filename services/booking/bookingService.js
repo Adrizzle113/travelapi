@@ -22,7 +22,7 @@ const ENABLE_MOCK_BOOKINGS = process.env.ENABLE_MOCK_BOOKINGS === 'true';
 
 // Timeout configurations for booking operations
 const TIMEOUTS = {
-  prebook: 20000,
+  prebook: 60000,  // ✅ ETG requirement: 60 seconds for prebook
   orderForm: 15000,
   orderFinish: 30000,
   orderStatus: 10000,
@@ -164,9 +164,10 @@ function formatAxiosError(error, operation) {
  * @param {Array} guests - Guests array [{ adults: 2, children: [] }]
  * @param {string} residency - Residency code (uppercase, e.g., 'US')
  * @param {string} language - Language code (default: 'en')
+ * @param {number} priceIncreasePercent - Price increase tolerance (0-100, default: 0)
  * @returns {Promise<Object>} - Prebook response with booking_hash
  */
-export async function prebookRate(book_hash, guests, residency = 'US', language = 'en') {
+export async function prebookRate(book_hash, guests, residency = 'US', language = 'en', priceIncreasePercent = 0) {
   const endpoint = '/hotel/prebook/';
 
   try {
@@ -191,15 +192,22 @@ export async function prebookRate(book_hash, guests, residency = 'US', language 
     // Ensure residency is uppercase for prebook
     const normalizedResidency = (residency || 'US').toUpperCase();
 
+    // Validate price_increase_percent (0-100)
+    const validPriceIncrease = Math.max(0, Math.min(100, priceIncreasePercent || 0));
+
     // Build request body with correct parameter names (ETG API expects 'hash' not 'book_hash')
     const requestBody = {
       hash: book_hash,  // ✅ Use 'hash' not 'book_hash'
       guests: guests,   // ✅ Required
       residency: normalizedResidency,  // ✅ Uppercase
-      language: language || 'en'  // ✅ Required
+      language: language || 'en',  // ✅ Required
+      ...(validPriceIncrease > 0 && { price_increase_percent: validPriceIncrease })  // ✅ ADD: Conditionally include if > 0
     };
     
     console.log(`🔒 ETG prebookRate: hash=${book_hash?.substring(0, 20)}... (${rateLimitCheck.remaining || '?'} requests remaining)`);
+    if (validPriceIncrease > 0) {
+      console.log(`   ⚙️  Price increase tolerance: ${validPriceIncrease}%`);
+    }
     console.log(`📤 Sending to ETG API ${endpoint}:`);
     console.log(`   Request body:`, JSON.stringify(requestBody, null, 2));
 
@@ -211,25 +219,63 @@ export async function prebookRate(book_hash, guests, residency = 'US', language 
     recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
-      const prebookedHash = response.data.data?.hotels?.[0]?.rates?.[0]?.book_hash;
-      const priceChanged = response.data.data?.changes?.price_changed;
+      const data = response.data.data;
+      const prebookedHash = data?.hotels?.[0]?.rates?.[0]?.book_hash;
+      const priceChanged = data?.changes?.price_changed || false;
+      
+      // ✅ EXTRACT NEW PRICE from response structure
+      const newPrice = data?.hotels?.[0]?.rates?.[0]?.payment_options?.payment_types?.[0]?.show_amount;
+      const newPriceCurrency = data?.hotels?.[0]?.rates?.[0]?.payment_options?.payment_types?.[0]?.show_currency_code;
+      
+      // ✅ EXTRACT ORIGINAL PRICE if available in changes
+      const originalPrice = data?.changes?.original_price;
       
       console.log(`✅ Prebook successful: prebooked_hash=${prebookedHash?.substring(0, 20)}...`);
       if (priceChanged) {
         console.warn(`⚠️ Price changed during prebook!`);
+        console.log(`   Original: ${originalPrice || 'N/A'} → New: ${newPrice || 'N/A'} ${newPriceCurrency || ''}`);
       }
       
-      return response.data.data;
+      // ✅ RETURN ENHANCED RESPONSE with all price information
+      return {
+        ...data,
+        booking_hash: prebookedHash,  // Add at top level for easier access
+        price_changed: priceChanged,
+        new_price: newPrice ? parseFloat(newPrice) : undefined,
+        new_price_currency: newPriceCurrency,
+        original_price: originalPrice ? parseFloat(originalPrice) : undefined,
+      };
+    }
+
+    // ✅ HANDLE SPECIFIC ERROR CODES
+    if (response.data?.error === 'no_available_rates') {
+      const noAvailableError = new Error('NO_AVAILABLE_RATES: Rate not available within price increase limit');
+      noAvailableError.code = 'NO_AVAILABLE_RATES';
+      throw noAvailableError;
     }
 
     throw new Error(response.data?.error?.message || 'Prebook failed');
 
   } catch (error) {
+    // ✅ ENHANCED ERROR HANDLING - Check for no_available_rates
+    if (error.response?.data?.error === 'no_available_rates' || 
+        error.message?.includes('NO_AVAILABLE_RATES')) {
+      const noAvailableError = new Error('NO_AVAILABLE_RATES');
+      noAvailableError.code = 'NO_AVAILABLE_RATES';
+      noAvailableError.message = 'Rate not available within price increase limit';
+      throw noAvailableError;
+    }
+    
     const formattedError = formatAxiosError(error, 'Prebook rate');
     console.error('❌ ETG prebookRate error:', formattedError.message);
     if (error.response) {
       console.error('   Status:', error.response.status);
       console.error('   Response data:', JSON.stringify(error.response.data, null, 2));
+      
+      // Preserve error code if available
+      if (error.code) {
+        formattedError.code = error.code;
+      }
     }
     throw formattedError;
   }

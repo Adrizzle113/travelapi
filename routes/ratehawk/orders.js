@@ -62,8 +62,12 @@ router.post("/prebook", validatePrebook, async (req, res) => {
     guests = [{ adults: 2, children: [] }],  // ✅ Extract guests (required)
     residency = "US",  // ✅ Default to uppercase for prebook
     language = "en",  // ✅ Extract language (required)
-    currency = "USD"  // Not used in prebook but keep for logging
+    currency = "USD",  // Not used in prebook but keep for logging
+    price_increase_percent = 0  // ✅ ADD: Price increase tolerance (0-100, default: 0 = no increase allowed)
   } = req.body;
+  
+  // ✅ Validate price_increase_percent (0-100)
+  const validPriceIncrease = Math.max(0, Math.min(100, price_increase_percent || 0));
 
   // Normalize residency first (handles "en-us" → "us"), then convert to uppercase for prebook
   const normalizedResidency = normalizeResidency(residency);
@@ -75,6 +79,9 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   console.log(`👥 Guests: ${JSON.stringify(guests)}`);
   console.log(`🌐 Language: ${language}`);
   console.log(`Currency: ${currency}`);
+  if (validPriceIncrease > 0) {
+    console.log(`💰 Price increase tolerance: ${validPriceIncrease}%`);
+  }
 
   // Validation
   if (!book_hash) {
@@ -118,46 +125,63 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   }
 
   try {
-  // ✅ Pass guests and language to prebookRate (uppercase residency for prebook)
-  const result = await prebookRate(book_hash, guests, prebookResidency, language);
+    // ✅ Pass price_increase_percent to prebookRate
+    const result = await prebookRate(
+      book_hash, 
+      guests, 
+      prebookResidency, 
+      language,
+      validPriceIncrease  // ✅ ADD: Pass price increase tolerance
+    );
 
-  // ✅ EXTRACT booking_hash from ETG response structure
-  const booking_hash = result?.hotels?.[0]?.rates?.[0]?.book_hash;
-  
-  if (!booking_hash) {
-    console.error('⚠️ No booking_hash in prebook response:', JSON.stringify(result, null, 2).substring(0, 500));
-    return res.status(500).json({
-      success: false,
-      error: {
-        message: 'Prebook succeeded but no booking_hash was returned',
-        code: 'MISSING_BOOKING_HASH'
+    // ✅ EXTRACT booking_hash (could be at top level or nested)
+    const booking_hash = result.booking_hash || result?.hotels?.[0]?.rates?.[0]?.book_hash;
+    
+    if (!booking_hash) {
+      console.error('⚠️ No booking_hash in prebook response:', JSON.stringify(result, null, 2).substring(0, 500));
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'Prebook succeeded but no booking_hash was returned',
+          code: 'MISSING_BOOKING_HASH'
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`✅ Prebook successful: booking_hash=${booking_hash.substring(0, 30)}...`);
+    
+    // ✅ EXTRACT PRICE INFORMATION
+    const priceChanged = result.price_changed || false;
+    const originalPrice = result.original_price;
+    const newPrice = result.new_price;
+    const newPriceCurrency = result.new_price_currency || currency;
+
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      data: {
+        booking_hash,  // ✅ New p-... hash for booking form
+        price_changed: priceChanged,
+        original_price: originalPrice,  // ✅ ADD
+        new_price: newPrice,            // ✅ ADD
+        currency: newPriceCurrency,     // ✅ ADD
+        price_increase_percent: validPriceIncrease,  // ✅ Return what was used
+        hotels: result.hotels,
+        changes: result.changes || {},
+        room_data: result.hotels?.[0]?.rates?.[0]?.room_name || null,  // ✅ ADD room info
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`
     });
-  }
 
-  console.log(`✅ Prebook successful: booking_hash=${booking_hash.substring(0, 30)}...`);
-
-  const duration = Date.now() - startTime;
-
-  res.json({
-    success: true,
-    data: {
-      booking_hash,  // ✅ Add at top level for frontend
-      hotels: result.hotels,
-      changes: result.changes || {},
-      price_changed: result.changes?.price_changed || false,
-      new_price: result.changes?.new_price
-    },
-    timestamp: new Date().toISOString(),
-    duration: `${duration}ms`
-  });
-
-} catch (error) {
+  } catch (error) {
     const duration = Date.now() - startTime;
     console.error("💥 Prebook error:", error);
     console.error("   Error details:", {
       message: error.message,
+      code: error.code,
       status: error.response?.status,
       statusCode: error.statusCode,
       statusText: error.response?.statusText,
@@ -165,6 +189,22 @@ router.post("/prebook", validatePrebook, async (req, res) => {
       method: error.config?.method || req.method,
       path: req.path
     });
+
+    // ✅ HANDLE NO_AVAILABLE_RATES ERROR (CRITICAL for certification)
+    if (error.code === 'NO_AVAILABLE_RATES' || 
+        error.message?.includes('NO_AVAILABLE_RATES') ||
+        error.response?.data?.error === 'no_available_rates') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "Rate not available",
+          code: "NO_AVAILABLE_RATES",
+          details: "The selected rate is no longer available and cannot be booked within the specified price increase limit."
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+    }
 
     // Check if it's a 404 from ETG API
     if (error.response?.status === 404 || error.statusCode === 404) {
@@ -200,7 +240,7 @@ router.post("/prebook", validatePrebook, async (req, res) => {
       success: false,
       error: {
         message: error.message || "Failed to prebook rate",
-        code: error.category || "PREBOOK_ERROR"
+        code: error.code || error.category || "PREBOOK_ERROR"
       },
       timestamp: new Date().toISOString(),
       duration: `${duration}ms`
