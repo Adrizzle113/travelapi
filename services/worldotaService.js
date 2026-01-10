@@ -400,6 +400,13 @@ class WorldOTAService {
    * @param {string} params.residency - Residency country code (default: "gb")
    * @param {string} params.language - Language code (default: "en")
    * @param {string} params.currency - Currency code (default: "EUR")
+   * @param {Object} [params.upsells] - Optional upsells (early check-in, late checkout)
+   * @param {Object} [params.upsells.early_checkin] - Early check-in request (optional time: "HH:MM")
+   * @param {Object} [params.upsells.late_checkout] - Late check-out request (optional time: "HH:MM")
+   * @param {boolean} [params.upsells.multiple_eclc] - Request all available early check-ins/check-outs for the rate
+   * @param {boolean} [params.upsells.only_eclc] - Only show rates with early check-in/late check-out
+   * @param {number} [params.timeout] - Maximum search timeout in seconds (1-100, optional)
+   * @param {string} [params.matchHash] - Match hash from SERP rate for analytics (optional)
    * @returns {Object} Hotel page data with rates and room groups
    */
   async getHotelPage({
@@ -410,6 +417,9 @@ class WorldOTAService {
     residency = "gb",
     language = "en",
     currency = "EUR",
+    upsells = null,
+    timeout = null,
+    matchHash = null,
   }) {
     try {
       if (!hotelId) {
@@ -438,6 +448,15 @@ class WorldOTAService {
       console.log(`👥 Guests:`, guests);
       console.log(`🌍 Residency: ${residency}`);
       console.log(`💰 Currency: ${currency}`);
+      if (upsells) {
+        console.log(`🎁 Upsells requested:`, JSON.stringify(upsells));
+      }
+      if (timeout) {
+        console.log(`⏱️ Timeout: ${timeout}s`);
+      }
+      if (matchHash) {
+        console.log(`🔗 Match hash: ${matchHash}`);
+      }
 
       // Normalize residency (convert "en-us" to "us")
       const normalizedResidency = residency?.replace(/^en-/, '') || residency;
@@ -451,6 +470,11 @@ class WorldOTAService {
 
       console.log(`   Using ${isNumericId ? 'hid' : 'id'}: ${hotelId}`);
 
+      // Validate timeout if provided (must be between 1 and 100)
+      if (timeout !== null && (timeout < 1 || timeout > 100)) {
+        throw new Error("Timeout must be between 1 and 100 seconds");
+      }
+
       const requestData = {
         checkin,
         checkout,
@@ -459,6 +483,9 @@ class WorldOTAService {
         guests,
         ...hotelIdParam, // Spread the correct parameter (hid for numeric, id for string)
         currency,
+        ...(upsells && Object.keys(upsells).length > 0 && { upsells }), // Conditionally include upsells if provided
+        ...(timeout !== null && timeout >= 1 && timeout <= 100 && { timeout }), // Conditionally include timeout
+        ...(matchHash && { match_hash: matchHash }), // Conditionally include match_hash for SERP-HP matching
       };
 
       const auth = Buffer.from(`${this.keyId}:${this.apiKey}`).toString(

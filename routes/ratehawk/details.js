@@ -136,7 +136,7 @@ router.get("/hotel/details-t", async (req, res) => {
 
 router.post("/hotel/details", async (req, res) => {
   const startTime = Date.now();
-  const { hotelId, searchContext, residency, currency } = req.body;
+  const { hotelId, searchContext, residency, currency, upsells, timeout, matchHash } = req.body;
   
   console.log("🏨 === HOTEL DETAILS REQUEST (WORLDOTA API) ===");
   console.log(`🏨 Hotel ID: ${hotelId}`);
@@ -145,6 +145,15 @@ router.post("/hotel/details", async (req, res) => {
   console.log(`👥 Guests:`, JSON.stringify(searchContext?.guests));
   console.log(`🌍 Residency: ${residency}`);
   console.log(`💰 Currency: ${currency}`);
+  if (upsells) {
+    console.log(`🎁 Upsells:`, JSON.stringify(upsells));
+  }
+  if (timeout) {
+    console.log(`⏱️ Timeout: ${timeout}s`);
+  }
+  if (matchHash) {
+    console.log(`🔗 Match hash: ${matchHash}`);
+  }
 
   if (!hotelId || !searchContext?.checkin || !searchContext?.checkout || !searchContext?.guests) {
     return res.status(400).json({ 
@@ -182,6 +191,9 @@ router.post("/hotel/details", async (req, res) => {
       residency: normalizedResidency,
       language: "en",
       currency: currency || "USD",
+      upsells: upsells || null, // Pass upsells if provided
+      timeout: timeout || null, // Pass timeout if provided (1-100 seconds)
+      matchHash: matchHash || null, // Pass match_hash if provided (for SERP-HP matching)
     });
 
     const duration = Date.now() - startTime;
