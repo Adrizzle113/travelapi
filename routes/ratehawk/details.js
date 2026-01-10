@@ -145,9 +145,20 @@ router.post("/hotel/details", async (req, res) => {
   console.log(`👥 Guests:`, JSON.stringify(searchContext?.guests));
   console.log(`🌍 Residency: ${residency}`);
   console.log(`💰 Currency: ${currency}`);
-  if (upsells) {
-    console.log(`🎁 Upsells:`, JSON.stringify(upsells));
+  
+  // ✅ Enhanced upsells logging
+  console.log(`🎁 === UPSELLS RECEIVED FROM FRONTEND ===`);
+  if (upsells && typeof upsells === 'object') {
+    console.log(`   - Upsells object:`, JSON.stringify(upsells, null, 2));
+    console.log(`   - Upsells keys:`, Object.keys(upsells));
+    console.log(`   - multiple_eclc:`, upsells.multiple_eclc);
+    console.log(`   - only_eclc:`, upsells.only_eclc);
+    console.log(`   - early_checkin:`, upsells.early_checkin);
+    console.log(`   - late_checkout:`, upsells.late_checkout);
+  } else {
+    console.log(`   - ⚠️ No upsells parameter received or invalid format`);
   }
+  
   if (timeout) {
     console.log(`⏱️ Timeout: ${timeout}s`);
   }

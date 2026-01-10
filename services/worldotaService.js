@@ -489,13 +489,12 @@ class WorldOTAService {
       };
 
       // ✅ DEBUG: Log upsells parameter being sent
-      if (upsells && Object.keys(upsells).length > 0) {
-        console.log('🎁 === UPSELLS PARAMETER DEBUG ===');
-        console.log('   - upsells input:', JSON.stringify(upsells, null, 2));
-        console.log('   - requestData.upsells:', JSON.stringify(requestData.upsells, null, 2));
-      } else {
-        console.log('⚠️ No upsells parameter provided in request');
-      }
+      console.log('🎁 === UPSELLS PARAMETER DEBUG ===');
+      console.log('   - upsells input parameter:', upsells ? JSON.stringify(upsells, null, 2) : 'null/undefined');
+      console.log('   - requestData.upsells:', requestData.upsells ? JSON.stringify(requestData.upsells, null, 2) : 'NOT INCLUDED');
+      console.log('   - Full requestData keys:', Object.keys(requestData));
+      console.log('   - Complete request body:', JSON.stringify(requestData, null, 2));
+      console.log(`   - RateHawk API endpoint: ${this.baseUrl}/search/hp/`);
 
       const auth = Buffer.from(`${this.keyId}:${this.apiKey}`).toString(
         "base64"
@@ -527,10 +526,14 @@ class WorldOTAService {
 
       const data = await response.json();
       
-      console.log(`✅ WorldOTA API Success: Hotel page retrieved`);
+      console.log(`✅ WorldOTA API Success: Hotel page retrieved (HTTP ${response.status})`);
+      console.log(`📥 Response status:`, data.status || 'N/A');
+      console.log(`📥 Response keys:`, Object.keys(data));
       
       // Handle response structure - API returns data.hotels (array)
       const hotels = data.data?.hotels || [];
+      console.log(`📥 Hotels in response: ${hotels.length}`);
+      
       if (hotels.length > 0) {
         const hotel = hotels[0]; // Get first hotel (should be the requested one)
         console.log(`🏨 Hotel: ${hotel.id || 'Unknown'}`);
@@ -543,14 +546,35 @@ class WorldOTAService {
           const currency = firstRate.payment_options?.payment_types?.[0]?.show_currency_code || 'N/A';
           console.log(`💵 Sample rate: ${price} ${currency}`);
           
-          // ✅ DEBUG: Log ECLC data from API response
-          console.log('🔍 === ECLC DATA DEBUG (First Rate) ===');
-          console.log('   - Rate keys:', Object.keys(firstRate));
-          console.log('   - early_checkin:', JSON.stringify(firstRate.early_checkin, null, 2));
-          console.log('   - late_checkout:', JSON.stringify(firstRate.late_checkout, null, 2));
-          console.log('   - serp_filters:', firstRate.serp_filters);
-          console.log('   - book_hash:', firstRate.book_hash);
-          console.log('   - match_hash:', firstRate.match_hash);
+          // ✅ DEBUG: Comprehensive ECLC data logging from API response
+          console.log('🔍 === ECLC DATA DEBUG (First Rate from API Response) ===');
+          console.log('   - Rate object keys:', Object.keys(firstRate));
+          console.log('   - early_checkin:', firstRate.early_checkin ? JSON.stringify(firstRate.early_checkin, null, 2) : 'null/undefined');
+          console.log('   - late_checkout:', firstRate.late_checkout ? JSON.stringify(firstRate.late_checkout, null, 2) : 'null/undefined');
+          console.log('   - serp_filters:', firstRate.serp_filters ? JSON.stringify(firstRate.serp_filters, null, 2) : 'null/undefined');
+          console.log('   - book_hash:', firstRate.book_hash || 'null/undefined');
+          console.log('   - match_hash:', firstRate.match_hash || 'null/undefined');
+          
+          // Check ALL rate properties for ECLC-related data
+          const rateKeys = Object.keys(firstRate);
+          const eclcRelatedKeys = rateKeys.filter(key => 
+            typeof key === 'string' && (
+              key.toLowerCase().includes('early') || 
+              key.toLowerCase().includes('late') || 
+              key.toLowerCase().includes('checkin') || 
+              key.toLowerCase().includes('checkout') ||
+              key.toLowerCase().includes('eclc') ||
+              key.toLowerCase().includes('upsell')
+            )
+          );
+          if (eclcRelatedKeys.length > 0) {
+            console.log('   - ⚠️ Found ECLC-related keys in rate:', eclcRelatedKeys);
+            eclcRelatedKeys.forEach(key => {
+              console.log(`      - ${key}:`, JSON.stringify(firstRate[key], null, 2));
+            });
+          } else {
+            console.log('   - ⚠️ No ECLC-related keys found in rate object');
+          }
           
           // Check for ECLC in serp_filters
           if (firstRate.serp_filters && Array.isArray(firstRate.serp_filters)) {
@@ -570,10 +594,23 @@ class WorldOTAService {
               )
             );
             if (eclcFilters.length > 0) {
-              console.log('   - ECLC-related filters:', eclcFilters);
+              console.log('   - ECLC-related filters found:', eclcFilters);
+            } else {
+              console.log('   - ⚠️ No ECLC-related flags in serp_filters');
+              console.log('   - All serp_filters:', firstRate.serp_filters);
             }
+          } else {
+            console.log('   - ⚠️ serp_filters is not an array or is missing');
           }
+          
+          // Log complete first rate object structure for debugging
+          console.log('   - Complete first rate structure (first 2000 chars):', 
+            JSON.stringify(firstRate, null, 2).substring(0, 2000));
+        } else {
+          console.log('   - ⚠️ No rates found in hotel response');
         }
+      } else {
+        console.log('   - ⚠️ No hotels found in API response');
       }
 
       return {
