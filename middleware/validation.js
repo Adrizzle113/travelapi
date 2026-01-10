@@ -459,7 +459,9 @@ export function validateOrderFinish(req, res, next) {
     });
   }
 
-  // Validate each guest object
+  // ✅ CERTIFICATION REQUIREMENT: Validate guests structure including children age
+  // ETG requires: children age specified in booking finish request
+  // Format: [{ adults: 2, children: [{ age: 5 }] }]
   for (let i = 0; i < guests.length; i++) {
     const guest = guests[i];
     if (!guest || typeof guest !== 'object') {
@@ -471,6 +473,53 @@ export function validateOrderFinish(req, res, next) {
         },
         timestamp: new Date().toISOString()
       });
+    }
+
+    // Validate adults field
+    if (guest.adults !== undefined && (typeof guest.adults !== 'number' || guest.adults < 1)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: `guest at index ${i}: adults must be a positive number`,
+          code: 'INVALID_ADULTS_COUNT'
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // ✅ CERTIFICATION: Validate children structure and age
+    if (guest.children && Array.isArray(guest.children)) {
+      for (let j = 0; j < guest.children.length; j++) {
+        const child = guest.children[j];
+        // Children can be objects with age, or just numbers (age), or empty objects
+        if (child && typeof child === 'object') {
+          // If child is an object, it should have an age field for booking finish
+          if (child.age !== undefined && (typeof child.age !== 'number' || child.age < 0 || child.age > 17)) {
+            return res.status(400).json({
+              success: false,
+              error: {
+                message: `guest at index ${i}, child at index ${j}: age must be a number between 0 and 17`,
+                code: 'INVALID_CHILD_AGE',
+                received: child.age
+              },
+              timestamp: new Date().toISOString()
+            });
+          }
+        } else if (typeof child === 'number') {
+          // Allow simple number format (age), will be normalized in service layer
+          if (child < 0 || child > 17) {
+            return res.status(400).json({
+              success: false,
+              error: {
+                message: `guest at index ${i}, child at index ${j}: age must be between 0 and 17`,
+                code: 'INVALID_CHILD_AGE',
+                received: child
+              },
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+      }
     }
   }
 

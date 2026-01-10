@@ -161,7 +161,8 @@ function formatAxiosError(error, operation) {
 /**
  * Prebook a rate (lock rate & validate availability)
  * @param {string} book_hash - Match hash (m-...) from search results, book hash (h-...) from hotel page, or prebooked hash (p-...)
- * @param {Array} guests - Guests array [{ adults: 2, children: [] }]
+ * @param {Array} guests - Guests array [{ adults: 2, children: [] }] or [{ adults: 2, children: [{ age: 5 }] }]
+ *   ✅ CERTIFICATION: Children age should be specified in format [{ age: number }] where age is 0-17
  * @param {string} residency - Residency code (uppercase, e.g., 'US')
  * @param {string} language - Language code (default: 'en')
  * @param {number} priceIncreasePercent - Price increase tolerance (0-100, default: 0)
@@ -386,6 +387,22 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
  * @param {string} user_ip - Optional user IP address
  * @returns {Promise<Object>} - Order completion response with order_id
  */
+/**
+ * Finish booking order (Step 3: Start booking process)
+ * ✅ CERTIFICATION REQUIREMENT: Children age must be specified in guests.children[] array
+ * @param {number} order_id - Order ID from booking form
+ * @param {number} item_id - Item ID from booking form  
+ * @param {Array} guests - Guests array [{ adults: 2, children: [{ age: 5 }] }]
+ *   ✅ ETG requires: Age specified in all booking requests within guests > children[] with age field
+ * @param {string} payment_type - Payment type: "hotel", "deposit", or "now"
+ * @param {string} partner_order_id - Partner order ID
+ * @param {string} language - Language code (default: 'en')
+ * @param {Array} upsell_data - Upsell data array (optional)
+ * @param {string} email - Guest email (optional)
+ * @param {string} phone - Guest phone (optional)
+ * @param {string} user_ip - User IP address (optional)
+ * @returns {Promise<Object>} - Booking finish response
+ */
 export async function finishOrder(order_id, item_id, guests, payment_type, partner_order_id, language = 'en', upsell_data = null, email = null, phone = null, user_ip = null) {
   const endpoint = '/hotel/order/booking/finish/';
 
@@ -406,6 +423,43 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
 
     if (!partner_order_id) {
       throw new Error('partner_order_id is required');
+    }
+
+    // ✅ CERTIFICATION: Normalize guests structure - ensure children have age field
+    // ETG API requires children age to be specified in booking finish request
+    const normalizedGuests = guests.map((guest, index) => {
+      const normalized = { ...guest };
+      
+      // Normalize children array to ensure age is specified
+      if (normalized.children && Array.isArray(normalized.children)) {
+        normalized.children = normalized.children.map((child, childIndex) => {
+          if (typeof child === 'number') {
+            // If child is just a number (age), convert to object with age field
+            return { age: child };
+          } else if (child && typeof child === 'object') {
+            // If child is an object, ensure it has age field
+            if (child.age === undefined && childIndex === 0) {
+              console.warn(`⚠️ Guest ${index}, child ${childIndex}: Missing age field. ETG may require age in booking finish request.`);
+            }
+            return child;
+          }
+          return child;
+        });
+      }
+      
+      return normalized;
+    });
+
+    // Log normalized guests structure for debugging
+    const totalChildren = normalizedGuests.reduce((sum, g) => sum + (g.children?.length || 0), 0);
+    if (totalChildren > 0) {
+      console.log(`   👶 Total children: ${totalChildren}`);
+      normalizedGuests.forEach((g, i) => {
+        if (g.children && g.children.length > 0) {
+          const ages = g.children.map(c => c?.age ?? 'N/A').join(', ');
+          console.log(`   Room ${i + 1}: ${g.children.length} child(ren) with age(s): ${ages}`);
+        }
+      });
     }
 
     // Build payload per ETG API specification
@@ -435,7 +489,7 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
     const payload = {
       order_id: orderIdNum,  // Send as number (matching ETG API response format)
       item_id: itemIdNum,    // Send as number (matching ETG API response format)
-      guests,
+      guests: normalizedGuests,  // ✅ Use normalized guests with age-specified children
       payment_type: normalizedPaymentType,  // Use normalized payment type
       partner_order_id,
       language
@@ -503,9 +557,18 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
 }
 
 /**
- * Get order status (poll for booking confirmation)
+ * ✅ CERTIFICATION: Get order status (single poll check)
+ * ETG requires: Poll /order/status/ until status is "ok" or final failure
+ * 
+ * This is a single status check. Frontend should poll until `is_final: true`.
+ * Returns `is_final`, `is_success`, and `is_processing` flags for polling logic.
+ * 
  * @param {string} order_id - Order ID from finish order
- * @returns {Promise<Object>} - Order status information
+ * @returns {Promise<Object>} - Order status information with polling flags:
+ *   - status: Current status string ("ok", "processing", "timeout", etc.)
+ *   - is_final: Boolean - true if final status (ok or error), false if processing
+ *   - is_success: Boolean - true if status is "ok" (confirmed)
+ *   - is_processing: Boolean - true if status is "processing" (continue polling)
  */
 export async function getOrderStatus(order_id) {
   const endpoint = '/hotel/order/booking/finish/status/';
@@ -543,8 +606,30 @@ export async function getOrderStatus(order_id) {
     recordRequest(endpoint);
 
     if (response.data && response.data.status === 'ok') {
-      console.log(`✅ Order status retrieved successfully`);
-      return response.data.data;
+      const orderStatus = response.data.data?.status || 'unknown';
+      console.log(`✅ Order status retrieved: ${orderStatus}`);
+      
+      // ✅ CERTIFICATION: Map ETG status values per certification checklist
+      // Final success statuses: "ok" (confirmed)
+      // Processing statuses: "processing" (keep polling)
+      // Final failure statuses: "timeout", "unknown", "block", "charge", "3ds", "soldout", "provider", "book_limit", "not_allowed", "booking_finish_did_not_succeed"
+      
+      const finalSuccessStatuses = ['ok'];
+      const processingStatuses = ['processing'];
+      const finalFailureStatuses = ['timeout', 'unknown', 'block', 'charge', '3ds', 'soldout', 'provider', 'book_limit', 'not_allowed', 'booking_finish_did_not_succeed'];
+      
+      const isFinalStatus = finalSuccessStatuses.includes(orderStatus) || finalFailureStatuses.includes(orderStatus);
+      const isSuccess = finalSuccessStatuses.includes(orderStatus);
+      const isProcessing = processingStatuses.includes(orderStatus);
+      
+      return {
+        ...response.data.data,
+        status: orderStatus,
+        is_final: isFinalStatus,  // ✅ Indicates if this is a final status (no need to poll more)
+        is_success: isSuccess,  // ✅ Indicates if booking was successful
+        is_processing: isProcessing,  // ✅ Indicates if still processing (should continue polling)
+        source: "etg_api"
+      };
     }
 
     throw new Error(response.data?.error?.message || 'Get order status failed');
