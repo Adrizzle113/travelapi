@@ -97,6 +97,29 @@ router.post("/prebook", validatePrebook, async (req, res) => {
       // Call multiroom prebook function
       const result = await prebookMultipleRooms(rooms, language);
 
+      // ✅ VALIDATION: Ensure all successful prebooks have booking_hash
+      const roomsWithHash = result.successful.filter(r => r.booking_hash);
+      if (roomsWithHash.length !== result.successful.length) {
+        console.error('⚠️ Some prebooked rooms missing booking_hash:', 
+          result.successful.map(r => ({ roomIndex: r.roomIndex, hasHash: !!r.booking_hash }))
+        );
+        // Log the actual prebook results for debugging
+        console.error('Prebook results:', JSON.stringify(result.successful, null, 2));
+        
+        // Filter out rooms without booking_hash and treat them as failed
+        const missingHashRooms = result.successful.filter(r => !r.booking_hash);
+        missingHashRooms.forEach(room => {
+          if (!result.failed) result.failed = [];
+          result.failed.push({
+            roomIndex: room.roomIndex,
+            error: 'booking_hash not found in prebook response',
+            code: 'MISSING_BOOKING_HASH'
+          });
+        });
+        // Update successful to only include rooms with booking_hash
+        result.successful = roomsWithHash;
+      }
+
       const duration = Date.now() - startTime;
 
       // Return multiroom format response

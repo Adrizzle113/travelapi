@@ -221,7 +221,26 @@ export async function prebookRate(book_hash, guests, residency = 'US', language 
 
     if (response.data && response.data.status === 'ok') {
       const data = response.data.data;
-      const prebookedHash = data?.hotels?.[0]?.rates?.[0]?.book_hash;
+      
+      // ✅ FIX: Check multiple possible paths for booking_hash
+      // ETG prebook response may have booking_hash at different locations
+      let prebookedHash = data?.booking_hash ||  // Top-level in data
+                          data?.hotels?.[0]?.rates?.[0]?.booking_hash ||  // With booking_hash field name
+                          data?.hotels?.[0]?.rates?.[0]?.book_hash;  // Current path (might be the new p-... hash)
+      
+      // If still not found, try alternative paths in response structure
+      if (!prebookedHash && response.data) {
+        prebookedHash = response.data.data?.booking_hash || 
+                        response.data.booking_hash;
+      }
+      
+      // ✅ VALIDATION: Throw error if booking_hash cannot be found
+      if (!prebookedHash) {
+        console.error('❌ Prebook response structure:', JSON.stringify(data, null, 2));
+        console.error('❌ Full response data:', JSON.stringify(response.data, null, 2));
+        throw new Error('booking_hash not found in prebook response. Check logs for response structure.');
+      }
+      
       const priceChanged = data?.changes?.price_changed || false;
       
       // ✅ EXTRACT NEW PRICE from response structure
