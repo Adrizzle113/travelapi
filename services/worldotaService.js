@@ -488,6 +488,15 @@ class WorldOTAService {
         ...(matchHash && { match_hash: matchHash }), // Conditionally include match_hash for SERP-HP matching
       };
 
+      // ✅ DEBUG: Log upsells parameter being sent
+      if (upsells && Object.keys(upsells).length > 0) {
+        console.log('🎁 === UPSELLS PARAMETER DEBUG ===');
+        console.log('   - upsells input:', JSON.stringify(upsells, null, 2));
+        console.log('   - requestData.upsells:', JSON.stringify(requestData.upsells, null, 2));
+      } else {
+        console.log('⚠️ No upsells parameter provided in request');
+      }
+
       const auth = Buffer.from(`${this.keyId}:${this.apiKey}`).toString(
         "base64"
       );
@@ -533,6 +542,37 @@ class WorldOTAService {
           const price = firstRate.payment_options?.payment_types?.[0]?.show_amount || 'N/A';
           const currency = firstRate.payment_options?.payment_types?.[0]?.show_currency_code || 'N/A';
           console.log(`💵 Sample rate: ${price} ${currency}`);
+          
+          // ✅ DEBUG: Log ECLC data from API response
+          console.log('🔍 === ECLC DATA DEBUG (First Rate) ===');
+          console.log('   - Rate keys:', Object.keys(firstRate));
+          console.log('   - early_checkin:', JSON.stringify(firstRate.early_checkin, null, 2));
+          console.log('   - late_checkout:', JSON.stringify(firstRate.late_checkout, null, 2));
+          console.log('   - serp_filters:', firstRate.serp_filters);
+          console.log('   - book_hash:', firstRate.book_hash);
+          console.log('   - match_hash:', firstRate.match_hash);
+          
+          // Check for ECLC in serp_filters
+          if (firstRate.serp_filters && Array.isArray(firstRate.serp_filters)) {
+            const hasEarlyCheckin = firstRate.serp_filters.includes('has_early_checkin');
+            const hasLateCheckout = firstRate.serp_filters.includes('has_late_checkout');
+            console.log('   - serp_filters has_early_checkin:', hasEarlyCheckin);
+            console.log('   - serp_filters has_late_checkout:', hasLateCheckout);
+            
+            // Check for other ECLC-related flags
+            const eclcFilters = firstRate.serp_filters.filter(f => 
+              typeof f === 'string' && (
+                f.includes('early') || 
+                f.includes('late') || 
+                f.includes('checkin') || 
+                f.includes('checkout') ||
+                f.includes('eclc')
+              )
+            );
+            if (eclcFilters.length > 0) {
+              console.log('   - ECLC-related filters:', eclcFilters);
+            }
+          }
         }
       }
 
@@ -911,11 +951,45 @@ class WorldOTAService {
           const currency = paymentType?.show_currency_code || "EUR";
           const roomName = rate.room_name || `Room ${index + 1}`;
 
+          // ✅ DEBUG: Log ECLC data for first rate as sample
+          if (index === 0) {
+            console.log(`🔍 === ECLC DEBUG (Processing Rate ${index + 1}) ===`);
+            console.log(`   Room: ${roomName}`);
+            console.log(`   - early_checkin:`, JSON.stringify(rate.early_checkin, null, 2));
+            console.log(`   - late_checkout:`, JSON.stringify(rate.late_checkout, null, 2));
+            console.log(`   - serp_filters:`, rate.serp_filters);
+            console.log(`   - book_hash:`, rate.book_hash);
+            console.log(`   - match_hash:`, rate.match_hash);
+            console.log(`   - All rate keys:`, Object.keys(rate));
+          }
+
           // Create unique key to avoid exact duplicates
           const uniqueKey = `${roomName}_${price}`;
 
           if (!processedRates.has(uniqueKey) && price > 0) {
             processedRates.add(uniqueKey);
+
+            // ✅ Extract ECLC data from rate
+            const earlyCheckin = rate.early_checkin || null;
+            const lateCheckout = rate.late_checkout || null;
+            const serpFilters = rate.serp_filters || [];
+            
+            // ✅ Check serp_filters for ECLC availability flags
+            const hasEarlyCheckinFlag = serpFilters.includes('has_early_checkin');
+            const hasLateCheckoutFlag = serpFilters.includes('has_late_checkout');
+            
+            // ✅ Determine ECLC availability (check object existence, serp_filters, or availability flag)
+            const hasEarlyCheckin = !!(
+              earlyCheckin ||
+              hasEarlyCheckinFlag ||
+              (earlyCheckin && earlyCheckin.available !== false)
+            );
+            
+            const hasLateCheckout = !!(
+              lateCheckout ||
+              hasLateCheckoutFlag ||
+              (lateCheckout && lateCheckout.available !== false)
+            );
 
             roomGroups.push({
               groupId: rate.match_hash || `room_${index}`,
@@ -926,6 +1000,8 @@ class WorldOTAService {
               rates: [
                 {
                   rateId: rate.match_hash,
+                  book_hash: rate.book_hash || null,  // ✅ ADD: Required for booking
+                  match_hash: rate.match_hash,         // ✅ ADD: For SERP-HP matching
                   roomName: roomName,
                   amount: price,
                   currency: currency,
@@ -935,13 +1011,27 @@ class WorldOTAService {
                   cancellation:
                     rate.payment_options?.payment_types?.[0]
                       ?.cancellation_penalties,
+                  
+                  // ✅ ADD: ECLC Data Extraction
+                  early_checkin: earlyCheckin,  // Full ECLC object from API
+                  late_checkout: lateCheckout,  // Full ECLC object from API
+                  serp_filters: serpFilters,    // ✅ ADD: May contain ECLC flags
+                  
+                  // ✅ ADD: ECLC Availability Flags (for frontend convenience)
+                  has_early_checkin: hasEarlyCheckin,
+                  has_late_checkout: hasLateCheckout,
                 },
               ],
               hasPricing: true,
-              originalRate: rate,
+              originalRate: rate,  // Keep original for debugging and additional data
             });
 
-            console.log(`  💳 ${roomName} - €${price} ${currency}`);
+            // ✅ Enhanced logging with ECLC info
+            if (hasEarlyCheckin || hasLateCheckout) {
+              console.log(`  💳 ${roomName} - €${price} ${currency} [ECLC: ${hasEarlyCheckin ? 'Early' : ''}${hasEarlyCheckin && hasLateCheckout ? ' + ' : ''}${hasLateCheckout ? 'Late' : ''}]`);
+            } else {
+              console.log(`  💳 ${roomName} - €${price} ${currency}`);
+            }
           }
         });
       }
