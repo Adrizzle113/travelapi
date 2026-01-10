@@ -442,13 +442,22 @@ class WorldOTAService {
       // Normalize residency (convert "en-us" to "us")
       const normalizedResidency = residency?.replace(/^en-/, '') || residency;
 
+      // Check if hotelId is numeric (hid) or string slug (id)
+      // Numeric IDs should use 'hid', string slugs should use 'id'
+      const isNumericId = /^\d+$/.test(String(hotelId));
+      const hotelIdParam = isNumericId 
+        ? { hid: parseInt(hotelId) }
+        : { id: hotelId };
+
+      console.log(`   Using ${isNumericId ? 'hid' : 'id'}: ${hotelId}`);
+
       const requestData = {
         checkin,
         checkout,
         residency: normalizedResidency,
         language,
         guests,
-        id: hotelId,
+        ...hotelIdParam, // Spread the correct parameter (hid for numeric, id for string)
         currency,
       };
 
