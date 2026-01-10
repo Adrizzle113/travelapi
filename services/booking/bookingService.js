@@ -283,6 +283,80 @@ export async function prebookRate(book_hash, guests, residency = 'US', language 
 }
 
 /**
+ * Prebook multiple rooms (multiroom booking)
+ * Each room can have different rate types (different book_hash/match_hash)
+ * @param {Array} rooms - Array of room objects: [{ book_hash, guests, residency, price_increase_percent }, ...]
+ * @param {string} language - Language code
+ * @returns {Promise<Array>} - Array of prebook results: [{ roomIndex, booking_hash, price_changed, ... }, ...]
+ */
+export async function prebookMultipleRooms(rooms, language = 'en') {
+  // Validate rooms array (max 6 rooms per RateHawk API v3)
+  if (!Array.isArray(rooms) || rooms.length === 0 || rooms.length > 6) {
+    throw new Error('Rooms must be an array with 1-6 rooms (RateHawk API limit)');
+  }
+
+  console.log(`🏨 Prebooking ${rooms.length} room(s)...`);
+
+  // Prebook each room - use Promise.allSettled to handle partial failures gracefully
+  const prebookResults = await Promise.allSettled(
+    rooms.map((room, index) => {
+      const hash = room.book_hash || room.match_hash;
+      if (!hash) {
+        return Promise.reject(new Error(`Room ${index + 1}: book_hash or match_hash is required`));
+      }
+
+      return prebookRate(
+        hash,
+        room.guests || [{ adults: 2, children: [] }],
+        room.residency || 'US',
+        language,
+        room.price_increase_percent || 0
+      ).then(result => ({
+        roomIndex: index,
+        ...result
+      }));
+    })
+  );
+
+  // Process results and separate successful from failed
+  const successful = [];
+  const failed = [];
+
+  prebookResults.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      successful.push(result.value);
+    } else {
+      failed.push({
+        roomIndex: index,
+        error: result.reason.message || 'Prebook failed',
+        code: result.reason.code || 'PREBOOK_FAILED'
+      });
+    }
+  });
+
+  // If all rooms failed, throw error
+  if (successful.length === 0) {
+    throw new Error(`All room prebooks failed. Errors: ${failed.map(f => `Room ${f.roomIndex + 1}: ${f.error}`).join('; ')}`);
+  }
+
+  // If some rooms failed, log warning but continue with successful rooms
+  if (failed.length > 0) {
+    console.warn(`⚠️ ${failed.length} room(s) prebook failed, ${successful.length} succeeded`);
+    failed.forEach(f => {
+      console.warn(`   Room ${f.roomIndex + 1}: ${f.error}`);
+    });
+  }
+
+  console.log(`✅ ${successful.length}/${rooms.length} room(s) prebooked successfully`);
+
+  // Return both successful and failed results for frontend handling
+  return {
+    successful,
+    failed: failed.length > 0 ? failed : undefined
+  };
+}
+
+/**
  * Get booking form fields (required guest information)
  * Creates booking process and returns form fields + order information
  * Per ETG API: "Create booking process" endpoint
@@ -399,6 +473,88 @@ export async function getOrderForm(book_hash, partner_order_id, language = 'en',
     
     throw formattedError;
   }
+}
+
+/**
+ * Get order forms for multiple rooms (multiroom booking)
+ * Each prebooked room needs its own order form to get order_id and item_id
+ * @param {Array} prebookedRooms - Array of prebook results with booking_hash: [{ booking_hash, ... }, ...]
+ * @param {string} partner_order_id - Partner order ID (same for all rooms in single order)
+ * @param {string} language - Language code
+ * @param {string} user_ip - User IP address
+ * @returns {Promise<Object>} - Object with successful and failed arrays: { successful: [{ roomIndex, order_id, item_id, ... }, ...], failed?: [...] }
+ */
+export async function getOrderFormsForMultipleRooms(prebookedRooms, partner_order_id, language = 'en', user_ip = '127.0.0.1') {
+  // Validate prebooked rooms
+  if (!Array.isArray(prebookedRooms) || prebookedRooms.length === 0) {
+    throw new Error('Prebooked rooms array is required and must not be empty');
+  }
+
+  if (!partner_order_id) {
+    throw new Error('partner_order_id is required');
+  }
+
+  console.log(`📋 Getting order forms for ${prebookedRooms.length} room(s)...`);
+
+  // Get order form for each prebooked room - use Promise.allSettled for graceful failure handling
+  const orderFormResults = await Promise.allSettled(
+    prebookedRooms.map(async (prebookResult, index) => {
+      if (!prebookResult.booking_hash) {
+        throw new Error(`Room ${index + 1}: Missing booking_hash from prebook result`);
+      }
+      
+      const formResult = await getOrderForm(
+        prebookResult.booking_hash,
+        partner_order_id,  // Same partner_order_id for all rooms (links them in single order)
+        language,
+        user_ip
+      );
+      
+      return {
+        roomIndex: index,
+        booking_hash: prebookResult.booking_hash,
+        ...formResult
+      };
+    })
+  );
+
+  // Process results and separate successful from failed
+  const successful = [];
+  const failed = [];
+
+  orderFormResults.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      successful.push(result.value);
+    } else {
+      failed.push({
+        roomIndex: index,
+        booking_hash: prebookedRooms[index]?.booking_hash || 'unknown',
+        error: result.reason.message || 'Get order form failed',
+        code: result.reason.code || 'ORDER_FORM_FAILED'
+      });
+    }
+  });
+
+  // If all rooms failed, throw error
+  if (successful.length === 0) {
+    throw new Error(`All room order forms failed. Errors: ${failed.map(f => `Room ${f.roomIndex + 1}: ${f.error}`).join('; ')}`);
+  }
+
+  // If some rooms failed, log warning but continue with successful rooms
+  if (failed.length > 0) {
+    console.warn(`⚠️ ${failed.length} room(s) order form failed, ${successful.length} succeeded`);
+    failed.forEach(f => {
+      console.warn(`   Room ${f.roomIndex + 1}: ${f.error}`);
+    });
+  }
+
+  console.log(`✅ ${successful.length}/${prebookedRooms.length} room(s) order forms retrieved successfully`);
+
+  // Return both successful and failed results for frontend handling
+  return {
+    successful,
+    failed: failed.length > 0 ? failed : undefined
+  };
 }
 
 /**
@@ -614,6 +770,110 @@ export async function finishOrder(order_id, item_id, guests, payment_type, partn
     }
     throw formattedError;
   }
+}
+
+/**
+ * Finish booking for multiple rooms (multiroom booking)
+ * RateHawk API v3 requires separate finish requests per room (linked via partner_order_id)
+ * Each room needs its own order_id and item_id from the order form step
+ * @param {Array} orderForms - Array of order form results: [{ order_id, item_id, ... }, ...]
+ * @param {Array} guests - Guests array (one element per room): [{ adults: 2, children: [] }, ...]
+ * @param {string} payment_type - Payment type (must be same for all rooms)
+ * @param {string} partner_order_id - Partner order ID (same for all rooms - links them in single order)
+ * @param {string} language - Language code
+ * @param {Array} upsell_data - Upsell data (optional, applied to all rooms)
+ * @returns {Promise<Object>} - Combined booking result with successful and failed arrays
+ */
+export async function finishMultipleRoomOrder(orderForms, guests, payment_type, partner_order_id, language = 'en', upsell_data = null) {
+  // Validate: orderForms and guests arrays must match length
+  if (orderForms.length !== guests.length) {
+    throw new Error(`Order forms (${orderForms.length}) and guests (${guests.length}) arrays must have same length`);
+  }
+
+  if (!partner_order_id) {
+    throw new Error('partner_order_id is required');
+  }
+
+  console.log(`🎯 Finishing booking for ${orderForms.length} room(s)...`);
+
+  // Finish booking for each room - use Promise.allSettled for graceful failure handling
+  // RateHawk API requires separate finish requests per room, linked via partner_order_id
+  const finishResults = await Promise.allSettled(
+    orderForms.map(async (form, index) => {
+      if (!form.order_id || !form.item_id) {
+        throw new Error(`Room ${index + 1}: Missing order_id or item_id from order form`);
+      }
+
+      // Use single room guests array (one element per room)
+      const roomGuests = [guests[index]];
+
+      const result = await finishOrder(
+        form.order_id,
+        form.item_id,
+        roomGuests,  // Single room guests array
+        payment_type,
+        partner_order_id,  // Same partner_order_id for all rooms (links them)
+        language,
+        upsell_data,  // Same upsells for all rooms (if applicable)
+        null, // email
+        null, // phone
+        null  // user_ip
+      );
+
+      return {
+        roomIndex: index,
+        order_id: form.order_id,
+        item_id: form.item_id,
+        ...result
+      };
+    })
+  );
+
+  // Process results and separate successful from failed
+  const successful = [];
+  const failed = [];
+
+  finishResults.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      successful.push(result.value);
+    } else {
+      failed.push({
+        roomIndex: index,
+        order_id: orderForms[index]?.order_id || 'unknown',
+        item_id: orderForms[index]?.item_id || 'unknown',
+        error: result.reason.message || 'Finish order failed',
+        code: result.reason.code || result.reason.ratehawkError?.code || 'FINISH_ORDER_FAILED'
+      });
+    }
+  });
+
+  // If all rooms failed, throw error
+  if (successful.length === 0) {
+    throw new Error(`All room bookings failed. Errors: ${failed.map(f => `Room ${f.roomIndex + 1}: ${f.error}`).join('; ')}`);
+  }
+
+  // If some rooms failed, log warning but continue with successful rooms
+  if (failed.length > 0) {
+    console.warn(`⚠️ ${failed.length} room(s) booking failed, ${successful.length} succeeded`);
+    failed.forEach(f => {
+      console.warn(`   Room ${f.roomIndex + 1}: ${f.error} (order_id: ${f.order_id})`);
+    });
+  }
+
+  console.log(`✅ ${successful.length}/${orderForms.length} room(s) booking finished successfully`);
+
+  // Return combined results
+  // All rooms in a multiroom booking share the same partner_order_id
+  // Each room may have its own order_id from RateHawk (or they may be linked)
+  return {
+    success: failed.length === 0,  // All rooms succeeded
+    rooms: successful,
+    failed: failed.length > 0 ? failed : undefined,
+    partner_order_id,  // Shared partner order ID (links all rooms)
+    order_ids: successful.map(r => r.order_id).filter(Boolean),  // All order IDs from successful bookings
+    // Note: RateHawk may return same order_id for all rooms if they're linked,
+    // or different order_ids if they're separate orders linked via partner_order_id
+  };
 }
 
 /**

@@ -479,7 +479,7 @@ class WorldOTAService {
         checkin,
         checkout,
         residency: normalizedResidency,
-        language,
+        language,  // ✅ Forwarded to RateHawk API (localizes static content, but NOT room names - RateHawk limitation)
         guests,
         ...hotelIdParam, // Spread the correct parameter (hid for numeric, id for string)
         currency,
@@ -488,13 +488,15 @@ class WorldOTAService {
         ...(matchHash && { match_hash: matchHash }), // Conditionally include match_hash for SERP-HP matching
       };
 
-      // ✅ DEBUG: Log upsells parameter being sent
+      // ✅ DEBUG: Log language and upsells parameters being sent
+      console.log(`🌐 Language parameter: ${language || 'en (default)'}`);
       console.log('🎁 === UPSELLS PARAMETER DEBUG ===');
       console.log('   - upsells input parameter:', upsells ? JSON.stringify(upsells, null, 2) : 'null/undefined');
       console.log('   - requestData.upsells:', requestData.upsells ? JSON.stringify(requestData.upsells, null, 2) : 'NOT INCLUDED');
       console.log('   - Full requestData keys:', Object.keys(requestData));
       console.log('   - Complete request body:', JSON.stringify(requestData, null, 2));
       console.log(`   - RateHawk API endpoint: ${this.baseUrl}/search/hp/`);
+      console.log(`   - ⚠️ NOTE: RateHawk API localizes static content (descriptions, amenities) but NOT room names from rates API`);
 
       const auth = Buffer.from(`${this.keyId}:${this.apiKey}`).toString(
         "base64"

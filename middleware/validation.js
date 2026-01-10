@@ -302,13 +302,139 @@ export function validateBookingForm(req, res, next) {
 }
 
 export function validatePrebook(req, res, next) {
-  const { book_hash, residency, currency } = req.body;
+  const { book_hash, residency, currency, rooms } = req.body;
 
+  // ✅ Support both single room (book_hash) and multiroom (rooms array) formats
+  const isMultiroom = rooms && Array.isArray(rooms) && rooms.length > 0;
+
+  if (isMultiroom) {
+    // ✅ MULTIROOM FORMAT VALIDATION
+    if (rooms.length === 0 || rooms.length > 6) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Rooms array must contain 1-6 rooms (RateHawk API limit)',
+          code: 'INVALID_ROOMS_COUNT',
+          min_rooms: 1,
+          max_rooms: 6,
+          received: rooms.length
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate each room - use for loop to allow early return
+    for (let index = 0; index < rooms.length; index++) {
+      const room = rooms[index];
+      
+      // Validate book_hash or match_hash
+      const hash = room.book_hash || room.match_hash;
+      if (!hash || typeof hash !== 'string' || hash.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Room ${index + 1}: book_hash or match_hash is required and must be a non-empty string`,
+            code: 'MISSING_ROOM_BOOK_HASH',
+            roomIndex: index
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Validate hash format
+      if (!hash.startsWith('m-') && !hash.startsWith('h-') && !hash.startsWith('p-')) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Room ${index + 1}: Invalid hash format. Expected match_hash (m-...), book_hash (h-...), or prebooked hash (p-...)`,
+            code: 'INVALID_ROOM_BOOK_HASH_FORMAT',
+            roomIndex: index,
+            received: hash
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Validate guests array
+      if (!room.guests || !Array.isArray(room.guests) || room.guests.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Room ${index + 1}: guests array is required and must not be empty`,
+            code: 'MISSING_ROOM_GUESTS',
+            roomIndex: index
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Validate children ages (0-17)
+      for (let guestIndex = 0; guestIndex < room.guests.length; guestIndex++) {
+        const guest = room.guests[guestIndex];
+        if (guest.children && Array.isArray(guest.children)) {
+          for (let childIndex = 0; childIndex < guest.children.length; childIndex++) {
+            const child = guest.children[childIndex];
+            const age = typeof child === 'number' ? child : child.age;
+            if (age !== undefined && (typeof age !== 'number' || age < 0 || age > 17)) {
+              return res.status(400).json({
+                success: false,
+                error: {
+                  message: `Room ${index + 1}, Guest ${guestIndex + 1}, Child ${childIndex + 1}: age must be a number between 0 and 17`,
+                  code: 'INVALID_CHILD_AGE',
+                  roomIndex: index,
+                  guestIndex,
+                  childIndex,
+                  received: age
+                },
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+        }
+      }
+
+      // Validate residency if provided
+      if (room.residency && typeof room.residency !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Room ${index + 1}: residency must be a string`,
+            code: 'INVALID_ROOM_RESIDENCY',
+            roomIndex: index
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Validate price_increase_percent if provided
+      if (room.price_increase_percent !== undefined && 
+          (typeof room.price_increase_percent !== 'number' || 
+           room.price_increase_percent < 0 || 
+           room.price_increase_percent > 100)) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Room ${index + 1}: price_increase_percent must be a number between 0 and 100`,
+            code: 'INVALID_PRICE_INCREASE_PERCENT',
+            roomIndex: index,
+            received: room.price_increase_percent
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    // If multiroom validation passes, continue
+    next();
+    return;
+  }
+
+  // ✅ SINGLE ROOM FORMAT VALIDATION (existing logic)
   if (!book_hash || typeof book_hash !== 'string' || book_hash.trim() === '') {
     return res.status(400).json({
       success: false,
       error: {
-        message: 'book_hash is required and must be a non-empty string',
+        message: 'book_hash is required and must be a non-empty string (for single room)',
         code: 'MISSING_BOOK_HASH'
       },
       timestamp: new Date().toISOString()

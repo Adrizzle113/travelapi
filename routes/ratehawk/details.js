@@ -136,7 +136,7 @@ router.get("/hotel/details-t", async (req, res) => {
 
 router.post("/hotel/details", async (req, res) => {
   const startTime = Date.now();
-  const { hotelId, searchContext, residency, currency, upsells, timeout, matchHash } = req.body;
+  const { hotelId, searchContext, residency, currency, language, upsells, timeout, matchHash } = req.body;
   
   console.log("🏨 === HOTEL DETAILS REQUEST (WORLDOTA API) ===");
   console.log(`🏨 Hotel ID: ${hotelId}`);
@@ -145,6 +145,7 @@ router.post("/hotel/details", async (req, res) => {
   console.log(`👥 Guests:`, JSON.stringify(searchContext?.guests));
   console.log(`🌍 Residency: ${residency}`);
   console.log(`💰 Currency: ${currency}`);
+  console.log(`🌐 Language: ${language || 'en (default)'}`);
   
   // ✅ Enhanced upsells logging
   console.log(`🎁 === UPSELLS RECEIVED FROM FRONTEND ===`);
@@ -194,13 +195,17 @@ router.post("/hotel/details", async (req, res) => {
 
   try {
     // Use WorldOTAService method
+    // ✅ CRITICAL: Forward language parameter from request body (defaults to "en")
+    // Note: RateHawk API localizes static content (descriptions, amenities, policies) but NOT room names from rates
+    const requestLanguage = language || "en";
+    
     const hotelPageResult = await worldotaService.getHotelPage({
       hotelId: hotelId,
       checkin: searchContext.checkin,
       checkout: searchContext.checkout,
       guests: searchContext.guests || [{ adults: 2, children: [] }],
       residency: normalizedResidency,
-      language: "en",
+      language: requestLanguage,  // ✅ Forward language parameter (e.g., "pt", "es", "en")
       currency: currency || "USD",
       upsells: upsells || null, // Pass upsells if provided
       timeout: timeout || null, // Pass timeout if provided (1-100 seconds)

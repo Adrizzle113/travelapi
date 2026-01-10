@@ -7,8 +7,11 @@ import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import {
   prebookRate,
+  prebookMultipleRooms,
   getOrderForm,
+  getOrderFormsForMultipleRooms,
   finishOrder,
+  finishMultipleRoomOrder,
   getOrderStatus,
   getOrderInfo,
   getOrderDocuments,
@@ -59,13 +62,96 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   const { 
     userId, 
     book_hash, 
-    guests = [{ adults: 2, children: [] }],  // ✅ Extract guests (required)
+    guests = [{ adults: 2, children: [] }],  // ✅ Extract guests (required) - single room format
     residency = "US",  // ✅ Default to uppercase for prebook
     language = "en",  // ✅ Extract language (required)
     currency = "USD",  // Not used in prebook but keep for logging
-    price_increase_percent = 0  // ✅ ADD: Price increase tolerance (0-100, default: 0 = no increase allowed)
+    price_increase_percent = 0,  // ✅ ADD: Price increase tolerance (0-100, default: 0 = no increase allowed)
+    rooms  // ✅ NEW: Multiroom format - array of room objects
   } = req.body;
-  
+
+  console.log("🔒 === PREBOOK REQUEST ===");
+
+  // ✅ DETECT FORMAT: Check if multiroom format (rooms array) or single room format (book_hash)
+  const isMultiroom = rooms && Array.isArray(rooms) && rooms.length > 0;
+
+  if (isMultiroom) {
+    // ✅ MULTIROOM FORMAT
+    console.log(`🏨 Multiroom prebook: ${rooms.length} room(s)`);
+
+    // Validate rooms array (1-6 rooms per RateHawk API v3 limit)
+    if (rooms.length > 6) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: `Rooms array must contain 1-6 rooms (RateHawk API limit). Received: ${rooms.length}`,
+          code: "TOO_MANY_ROOMS",
+          max_rooms: 6,
+          received: rooms.length
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    try {
+      // Call multiroom prebook function
+      const result = await prebookMultipleRooms(rooms, language);
+
+      const duration = Date.now() - startTime;
+
+      // Return multiroom format response
+      res.json({
+        status: "ok",
+        success: result.failed ? result.failed.length === 0 : true,
+        data: {
+          rooms: result.successful.map(room => ({
+            roomIndex: room.roomIndex,
+            booking_hash: room.booking_hash,
+            book_hash: room.booking_hash,  // Alias for consistency
+            price_changed: room.price_changed || false,
+            new_price: room.new_price ? parseFloat(room.new_price) : undefined,
+            original_price: room.original_price ? parseFloat(room.original_price) : undefined,
+            currency: room.new_price_currency || "USD"
+          })),
+          failed: result.failed,
+          total_rooms: rooms.length,
+          successful_rooms: result.successful.length,
+          failed_rooms: result.failed?.length || 0
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error("💥 Multiroom prebook error:", error);
+
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          message: error.message || "Failed to prebook multiple rooms",
+          code: error.code || "MULTIROOM_PREBOOK_ERROR"
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+    }
+
+    return;  // Exit early for multiroom flow
+  }
+
+  // ✅ SINGLE ROOM FORMAT (existing logic)
+  if (!book_hash) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "book_hash is required for single room, or rooms array for multiroom",
+        code: "MISSING_BOOK_HASH"
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
+
   // ✅ Validate price_increase_percent (0-100)
   const validPriceIncrease = Math.max(0, Math.min(100, price_increase_percent || 0));
 
@@ -73,7 +159,6 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   const normalizedResidency = normalizeResidency(residency);
   const prebookResidency = normalizedResidency.toUpperCase();  // Prebook requires uppercase
 
-  console.log("🔒 === PREBOOK REQUEST ===");
   console.log(`Book hash: ${book_hash?.substring(0, 20)}...`);
   console.log(`🌍 Residency: ${residency} → ${normalizedResidency} → ${prebookResidency} (normalized then uppercase for prebook)`);
   console.log(`👥 Guests: ${JSON.stringify(guests)}`);
@@ -81,18 +166,6 @@ router.post("/prebook", validatePrebook, async (req, res) => {
   console.log(`Currency: ${currency}`);
   if (validPriceIncrease > 0) {
     console.log(`💰 Price increase tolerance: ${validPriceIncrease}%`);
-  }
-
-  // Validation
-  if (!book_hash) {
-    return res.status(400).json({
-      success: false,
-      error: {
-        message: "book_hash is required",
-        code: "MISSING_BOOK_HASH"
-      },
-      timestamp: new Date().toISOString()
-    });
   }
 
   // Validate hash format - accepts match_hash (m-...), book_hash (h-...), or prebooked hash (p-...)
@@ -257,12 +330,114 @@ router.post("/prebook", validatePrebook, async (req, res) => {
 
 router.post("/order/form", validateOrderForm, async (req, res) => {
   const startTime = Date.now();
-  // Accept both book_hash and booking_hash for backward compatibility
-  // Prefer book_hash (correct flow), fallback to booking_hash
-  const { userId, book_hash, booking_hash, language = "en", partner_order_id } = req.body;
+  // Accept both book_hash and booking_hash for backward compatibility (single room)
+  // Also support multiroom format: prebooked_rooms or booking_hashes array
+  const { 
+    userId, 
+    book_hash, 
+    booking_hash,  // Single room - backward compatibility
+    language = "en", 
+    partner_order_id,
+    prebooked_rooms,  // ✅ NEW: Multiroom format - array of prebook results with booking_hash
+    booking_hashes  // ✅ NEW: Alternative multiroom format - array of booking hashes
+  } = req.body;
 
   console.log("📋 === ORDER FORM REQUEST (Create booking process) ===");
   
+  // ✅ DETECT FORMAT: Check if multiroom format (prebooked_rooms or booking_hashes array) or single room format
+  const isMultiroom = (prebooked_rooms && Array.isArray(prebooked_rooms) && prebooked_rooms.length > 0) ||
+                      (booking_hashes && Array.isArray(booking_hashes) && booking_hashes.length > 0);
+
+  if (isMultiroom) {
+    // ✅ MULTIROOM FORMAT
+    const rooms = prebooked_rooms || booking_hashes.map((hash, index) => ({ booking_hash: hash, roomIndex: index }));
+    
+    console.log(`🏨 Multiroom order form: ${rooms.length} room(s)`);
+    console.log(`Partner Order ID: ${partner_order_id}`);
+
+    if (!partner_order_id) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "partner_order_id is required for multiroom order",
+          code: "MISSING_PARTNER_ORDER_ID"
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate all rooms have booking_hash
+    const invalidRooms = rooms.filter((room, index) => {
+      const hash = room.booking_hash || room.book_hash;
+      return !hash || (typeof hash !== 'string' || hash.trim() === '');
+    });
+
+    if (invalidRooms.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: `Some rooms are missing booking_hash: rooms at indices ${invalidRooms.map(r => r.roomIndex || rooms.indexOf(r)).join(', ')}`,
+          code: "MISSING_BOOKING_HASH_MULTIROOM"
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    try {
+      const userIp = getUserIp(req);
+
+      // Call multiroom order form function
+      const result = await getOrderFormsForMultipleRooms(rooms, partner_order_id, language, userIp);
+
+      const duration = Date.now() - startTime;
+
+      res.json({
+        success: result.failed ? result.failed.length === 0 : true,
+        data: {
+          rooms: result.successful.map(room => ({
+            roomIndex: room.roomIndex,
+            order_id: room.order_id,
+            item_id: room.item_id,
+            booking_hash: room.booking_hash,
+            payment_types: room.payment_types || [],
+            form_fields: room.form_fields || [],
+            // Include other fields from order form response
+            ...room
+          })),
+          failed: result.failed,
+          total_rooms: rooms.length,
+          successful_rooms: result.successful.length,
+          failed_rooms: result.failed?.length || 0
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error("💥 Multiroom order form error:", error);
+
+      const errorCode = error.code || 
+                       error.ratehawkError?.code || 
+                       error.category || 
+                       "MULTIROOM_ORDER_FORM_ERROR";
+
+      res.status(error.statusCode || 500).json({
+        status: "error",
+        success: false,
+        error: {
+          code: errorCode,
+          message: error.ratehawkError?.message || error.message || "Failed to get multiroom order forms"
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+    }
+
+    return;  // Exit early for multiroom flow
+  }
+
+  // ✅ SINGLE ROOM FORMAT (existing logic)
   // Use book_hash if provided, otherwise fallback to booking_hash for backward compatibility
   const hash = book_hash || booking_hash;
   console.log(`Book hash: ${hash?.substring(0, 20)}...`);
@@ -273,7 +448,7 @@ router.post("/order/form", validateOrderForm, async (req, res) => {
     return res.status(400).json({
       success: false,
       error: {
-        message: "book_hash is required (from prebook response)",
+        message: "book_hash is required for single room, or prebooked_rooms/booking_hashes array for multiroom",
         code: "MISSING_BOOK_HASH"
       },
       timestamp: new Date().toISOString()
@@ -336,19 +511,162 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
   const startTime = Date.now();
   const { 
     userId, 
-    order_id,
-    item_id,
-    guests, 
+    order_id,  // Single room format
+    item_id,   // Single room format
+    guests,    // Single room format
     payment_type, 
     partner_order_id,
     language = "en",
     upsell_data,
     email,
     phone,
-    user_ip
+    user_ip,
+    rooms,      // ✅ NEW: Multiroom format - array of { order_id, item_id, guests }
+    order_forms // ✅ NEW: Alternative multiroom format - array of order form results
   } = req.body;
 
   console.log("✅ === ORDER FINISH REQUEST ===");
+
+  // ✅ DETECT FORMAT: Check if multiroom format (rooms or order_forms array) or single room format
+  const isMultiroom = (rooms && Array.isArray(rooms) && rooms.length > 0) ||
+                      (order_forms && Array.isArray(order_forms) && order_forms.length > 0);
+
+  if (isMultiroom) {
+    // ✅ MULTIROOM FORMAT
+    const orderForms = rooms || order_forms;
+    
+    console.log(`🏨 Multiroom order finish: ${orderForms.length} room(s)`);
+    console.log(`Partner Order ID: ${partner_order_id}`);
+    console.log(`Payment type: ${payment_type}`);
+
+    if (!partner_order_id) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "partner_order_id is required for multiroom order",
+          code: "MISSING_PARTNER_ORDER_ID"
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (!payment_type) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "payment_type is required for multiroom order",
+          code: "MISSING_PAYMENT_TYPE"
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Extract guests array from rooms (each room should have its guests)
+    // Format: rooms = [{ order_id, item_id, guests: [{ adults: 2, children: [] }] }, ...]
+    // Or: order_forms = [{ order_id, item_id, ... }, ...] and guests array is separate
+    let multiroomGuests;
+    
+    if (rooms && rooms[0]?.guests) {
+      // Rooms format with guests embedded
+      multiroomGuests = rooms.map(room => room.guests);
+    } else if (req.body.guests && Array.isArray(req.body.guests)) {
+      // Separate guests array (one per room)
+      multiroomGuests = req.body.guests;
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "guests array is required for multiroom (one element per room). Provide either: 1) rooms array with guests embedded, or 2) separate guests array",
+          code: "MISSING_MULTIROOM_GUESTS"
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate orderForms and guests arrays match length
+    if (orderForms.length !== multiroomGuests.length) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: `Order forms (${orderForms.length}) and guests (${multiroomGuests.length}) arrays must have same length`,
+          code: "MISMATCHED_ARRAYS"
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate each room has order_id and item_id
+    const invalidRooms = orderForms.filter((form, index) => !form.order_id || !form.item_id);
+    if (invalidRooms.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: `Some rooms are missing order_id or item_id: rooms at indices ${invalidRooms.map((_, i) => orderForms.indexOf(invalidRooms[i])).join(', ')}`,
+          code: "MISSING_ORDER_IDS_MULTIROOM"
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    try {
+      // Call multiroom finish function
+      const result = await finishMultipleRoomOrder(
+        orderForms,
+        multiroomGuests,
+        payment_type,
+        partner_order_id,
+        language,
+        upsell_data  // Same upsells for all rooms (if applicable)
+      );
+
+      const duration = Date.now() - startTime;
+
+      res.json({
+        success: result.success,
+        data: {
+          rooms: result.rooms.map(room => ({
+            roomIndex: room.roomIndex,
+            order_id: room.order_id,
+            status: room.status,
+            // Include other fields from finish response
+            ...room
+          })),
+          failed: result.failed,
+          partner_order_id: result.partner_order_id,
+          order_ids: result.order_ids,
+          total_rooms: orderForms.length,
+          successful_rooms: result.rooms.length,
+          failed_rooms: result.failed?.length || 0
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error("💥 Multiroom order finish error:", error);
+
+      const errorCode = error.code || 
+                       error.ratehawkError?.code || 
+                       error.category || 
+                       "MULTIROOM_ORDER_FINISH_ERROR";
+
+      res.status(error.statusCode || 500).json({
+        status: "error",
+        success: false,
+        error: {
+          code: errorCode,
+          message: error.ratehawkError?.message || error.message || "Failed to finish multiroom order"
+        },
+        timestamp: new Date().toISOString(),
+        duration: `${duration}ms`
+      });
+    }
+
+    return;  // Exit early for multiroom flow
+  }
+
+  // ✅ SINGLE ROOM FORMAT (existing logic)
   console.log(`Order ID: ${order_id}`);
   console.log(`Item ID: ${item_id}`);
   console.log(`Partner Order ID: ${partner_order_id}`);
@@ -363,7 +681,7 @@ router.post("/order/finish", validateOrderFinish, async (req, res) => {
     return res.status(400).json({
       success: false,
       error: {
-        message: "order_id and item_id are required (from booking/form response)",
+        message: "order_id and item_id are required for single room, or rooms array for multiroom",
         code: "MISSING_ORDER_IDS"
       },
       timestamp: new Date().toISOString()
